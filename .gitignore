@@ -7,7 +7,14 @@ out/
 *.dll
 *.lib
 *.pdb
+# Generated *.cmake script files are excluded by the catch-all pattern
+# below, but AY2D keeps its own `cmake/*.cmake` helpers as tracked
+# source (the bgfx-leak guard script, etc.). Re-include them explicitly.
 *.cmake
+!CMakeLists.txt
+!**/CMakeLists.txt
+!cmake/*.cmake
+!**/cmake/*.cmake
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
