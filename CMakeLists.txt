@@ -36,24 +36,42 @@ set(SRC_FILES
     # src/AYOrthographicCamera.cpp
 )
 
-# Library target. STATIC matches every other AYRuntime/* entry. The target is
-# declared with empty sources so subsequent `target_link_libraries` /
-# `target_include_directories` are valid CMake — without this, a Phase 1 PR
-# would be forced to edit the parent CMakeLists at the same time, which the
-# Phase 0 rules forbid (design.md §11.1).
-add_library(${MODULE_NAME} STATIC ${SRC_FILES})
+# Library target.
+#
+# Phase 0: INTERFACE library — no source files, no object files. INTERFACE
+# is the right "empty target" type for a Phase 0 stub because (a) it
+# requires no SOURCES list (vcpkg's strict-mode wrapper rejects empty
+# STATIC add_library), (b) it exposes target_include_directories +
+# target_link_libraries as INTERFACE properties so downstream consumers
+# can `target_link_libraries(... AY2D)` correctly, and (c) it creates no
+# .lib / .a artifact that would otherwise sit empty in the tree.
+#
+# Phase 1+ flips this to `add_library(${MODULE_NAME} STATIC ${SRC_FILES})`
+# the moment real `.cpp` files exist. The flipped form mirrors every other
+# AYRuntime/* entry (static archive). This single line is the only behavior
+# delta between Phase 0 and Phase 1+ in this file.
+#
+# Why INTERFACE today instead of declaring an inline `.cpp` that does
+# nothing: an empty-or-no-op TU is forbidden by design — the module is
+# explicitly "no code yet", and including even an empty translation unit
+# invites the "where's the actual implementation?" question in review.
+if(NOT SRC_FILES)
+    add_library(${MODULE_NAME} INTERFACE)
+else()
+    add_library(${MODULE_NAME} STATIC ${SRC_FILES})
+endif()
 
-target_include_directories(${MODULE_NAME} PUBLIC
+target_include_directories(${MODULE_NAME} INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
-# Phase 0 has no real link surface. The PUBLIC deps list below is empty by
+# Phase 0 has no real link surface. The INTERFACE deps list below is empty by
 # design. Phase 1+ adds per-design.md §2.3 allowed-dependencies list:
 #   AYMath, AYIO, AYResource (interface only), AYEntity (interface only),
 #   AYRenderer (PUBLIC headers only; never src/detail/*), AYShader
 #   (PUBLIC headers only), AYGameLoop, AYTime. Never AYUI. Never bgfx.
-target_link_libraries(${MODULE_NAME} PUBLIC
+target_link_libraries(${MODULE_NAME} INTERFACE
     # AYMath
     # AYIO
     # AYShader (public headers only)
@@ -90,9 +108,15 @@ add_custom_target(ay2d_check_no_bgfx_in_public_headers
     VERBATIM
 )
 
-# Mark the guard as part of the module's "all" target so a plain
-# `cmake --build .` inside AY2D/ also runs the leak check.
-add_dependencies(${MODULE_NAME} ay2d_check_no_bgfx_in_public_headers)
+# Phase 0 note: `add_dependencies` on an INTERFACE library is not allowed
+# (INTERFACE libraries have no build step to attach to). When the module
+# flips to `STATIC ${SRC_FILES}` in Phase 1+, the guard target is wired
+# via `add_dependencies(${MODULE_NAME} ay2d_check_no_bgfx_in_public_headers)`
+# here. For now, callers invoke the guard by its own target name:
+#   `cmake --build . --target ay2d_check_no_bgfx_in_public_headers`
+# which is exactly how a CI step would invoke it anyway.
+#
+# Stub note kept here so the Phase 1 PR does not need to think about this.
 
 # ----------------------------------------------------------------------------
 # Phase 0 note: enable_testing() + add_subdirectory(unittest) is intentionally
