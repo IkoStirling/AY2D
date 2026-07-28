@@ -835,3 +835,20 @@ When this file is updated, append a new section here:
 **Open follow-ups**:
 - <one-line summary>
 ```
+
+### 13.4 v0.1.2 — 2026-07-28 (Phase 1+ scaffold close)
+
+**Phase**: 1 (skeleton)
+**Locked changes**:
+- §10.2 + §11.1: AY2D ships its first `unittest/` subtree (mirrors AYPhysics sibling pattern), with AYTest-linked `AY2D_Tests` target. Three stub suites — `Test_TileCoord` / `Test_CollisionFlags` / `Test_TileIdPackMode` — cover the four placeholder public headers plus the §8.1 `CollisionFlags` operator set. No `.cpp` implementation yet; these are compile + invariant tests over the header surface, not functional tests.
+- §3.4: `World2D::resourceEpoch` semantics locked in `Test_TileCoord.cpp` ("`resourceEpoch` bumps only on new `IResource` instance or `addTilemap` / `removeTilemap` / `swapTilemap`").
+- §8.1: `CollisionFlags` (`Empty` vs `None`) and the `operator| / & / ^ / ~` set are now compile-checked and behavior-checked in `Test_CollisionFlags.cpp`. The header `AYTileCollision.h` is added to `include/AY2D/` to materialize the operator set without bumping the design; full `ITileCollisionQuery` interface lands in Phase 5+ per F-12.
+- §6.1: `TileIdPackMode` enum byte-size lock (`sizeof(TileIdPackMode) == 1`) verified in `Test_TileIdPackMode.cpp`.
+- Umbrella `AY2D.h` is added at the AY2D root. Consumers prefer `#include <AY2D.h>` over direct subdirectory includes; mirrors AYPhysics umbrella pattern (`AYRuntime/AYPhysics/AYPhysics.h`).
+- Root repository: `option(AY_ENABLE_AY2D ... OFF)` + conditional `add_subdirectory(AYRuntime/AY2D)` (default OFF) lands at the root `CMakeLists.txt`. End-to-end verified on Visual Studio 2026 (MSVC 19.51.36252) + cmake 4.3.1 + Ninja + vcpkg toolchain.
+
+**Open follow-ups**:
+- Phase 2 finite-tilemap MVP — `src/*.cpp` implementations + `.aytilemap` Loader stub + first real `TilemapParallaxDemo`.
+- `RenderPassSlot::Forward2DOpaque` and `DrawItem::payload` cross-module PRs (gated on AYRenderer maintainer per §4.2.1).
+- `IAYTilemap.h` / `IAYTileset.h` cross-module PR (gated on AYResource maintainer per §4.2.1).
+- `Test_HotReload_Tilemap` (F-11 / F-17) and visual / performance tests (F-7) deferred to Phase 2 alongside `.aytilemap` loader.

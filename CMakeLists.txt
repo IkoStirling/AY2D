@@ -62,6 +62,11 @@ else()
 endif()
 
 target_include_directories(${MODULE_NAME} INTERFACE
+    # Public headers live flat under `include/` (matches sibling
+    # convention: AYPhysics/AYRenderer put public headers directly in
+    # `include/` with no subdirectory). Consumers write
+    # `#include "AYWorld2D.h"` (no namespace prefix in the include path)
+    # or use the umbrella `#include <AY2D.h>`.
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
@@ -97,7 +102,7 @@ target_link_libraries(${MODULE_NAME} INTERFACE
 # trivially passes. Phase 1 populates include/AY2D/ and the guard becomes
 # load-bearing.
 # ----------------------------------------------------------------------------
-set(AY2D_PUBLIC_HEADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include/AY2D")
+set(AY2D_PUBLIC_HEADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 add_custom_target(ay2d_check_no_bgfx_in_public_headers
     COMMAND ${CMAKE_COMMAND}
@@ -119,11 +124,33 @@ add_custom_target(ay2d_check_no_bgfx_in_public_headers
 # Stub note kept here so the Phase 1 PR does not need to think about this.
 
 # ----------------------------------------------------------------------------
-# Phase 0 note: enable_testing() + add_subdirectory(unittest) is intentionally
-# omitted. The unittest/ directory will land in Phase 1+ alongside the first
-# real Test_*.cpp. Wiring it now would create an empty target set, which
-# upstream root CI testing might still pick up depending on how it probes
-# subdirectories.
+# AYTest integration (Phase 1+)
+#
+# AY2D follows the AYPhysics sibling pattern (see
+# AYRuntime/AYPhysics/unittest/CMakeLists.txt and AY2D CLAUDE.md "新增模块
+# 要求"):
+
+#   * `enable_testing()` so CTest can find our test executables.
+#   * `add_subdirectory(unittest)` gated on the directory existing, so a
+#     sub-tree without any Test_*.cpp is silently skipped (it would
+#     otherwise generate a "directory has no CMakeLists.txt" CMake
+#     warning).
+#   * Each Test_*.cpp is a stand-alone TU linked into a single
+#     AY2D_Tests executable that pulls in AYTest + AY2D (and only the
+#     dependencies a given test actually needs).
 # ----------------------------------------------------------------------------
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/unittest/CMakeLists.txt")
+    enable_testing()
+    add_subdirectory(unittest)
+else()
+    # Phase 0 stub state — `unittest/` does not yet exist. Phase 1+ adds the
+    # directory alongside the first real Test_*.cpp. Until then, do not
+    # call enable_testing() at the module scope (root already enabled it
+    # globally via its `enable_testing()` line before any
+    # add_subdirectory(... AYRuntime/AY2D ...)).
+    message(STATUS
+        "AY2D — unittest/ not present yet; "
+        "skipping enable_testing/add_subdirectory for Phase 0.")
+endif()
 
 message(STATUS "AY2D v0.1 (Phase 0 docs-only) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")

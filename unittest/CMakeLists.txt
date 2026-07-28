@@ -1,0 +1,61 @@
+cmake_minimum_required(VERSION 3.15)
+
+project(AY2D_Tests
+    VERSION 0.1.0
+    DESCRIPTION "AY2D unit tests (Phase 1+ scaffold; TU placeholders per design.md §11.2 CI gate)"
+)
+
+set(TEST_TARGET AY2D_Tests)
+
+# ---------------------------------------------------------------------------
+# Phase 1+ test target layout (mirrors AYPhysics/unittest/CMakeLists.txt):
+#
+#   * Each Test_<Subject>.cpp is a STAND-ALONE translation unit (one
+#     file = one TU). This follows the AYPhysics CLAUDE.md rule
+#     "每个 Test_*.cpp 是一个独立 TU (避免 MSVC include-order 问题, 参
+#     见 AYAudio 范本)".
+#
+#   * The AY2D module itself is INTERFACE in Phase 0 (no .lib/.a
+#     artifact). Tests link against it as an INTERFACE library; their
+#     PUBLIC include dir comes through automatically.
+#
+#   * AYTest comes from AYFoundation/AYTest/CMakeLists.txt. AY2D depends
+#     on AYTest via target_link_libraries(... AYTest) and a small set of
+#     public-include paths (see CLAUDE.md "新增模块要求").
+# ---------------------------------------------------------------------------
+
+add_executable(${TEST_TARGET}
+    main.cpp
+    # Phase 1+ stubs — these exercise the placeholder public headers
+    # shipped in include/AY2D/*.h (design.md §0 Phase 0 exit: 4 placeholder
+    # headers). The tests assert the placeholders compile + instantiate;
+    # functional assertions arrive with Phase 2 implementation.
+    Test_TileCoord.cpp
+    Test_CollisionFlags.cpp
+    Test_TileIdPackMode.cpp
+)
+
+target_link_libraries(${TEST_TARGET} PRIVATE
+    AY2D
+    AYTest
+    # No AYMath link required for these Phase 1+ stub tests — the
+    # placeholder headers do not include AYMath. Phase 2 adds AYMath /
+    # AYResource / AYEntity as those subsystems come online.
+)
+
+target_include_directories(${TEST_TARGET} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+)
+
+target_compile_definitions(${TEST_TARGET} PRIVATE
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN
+)
+
+if(MSVC)
+    target_compile_options(${TEST_TARGET} PRIVATE /W4 /wd4200)
+else()
+    target_compile_options(${TEST_TARGET} PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+add_test(NAME ${TEST_TARGET} COMMAND ${TEST_TARGET})

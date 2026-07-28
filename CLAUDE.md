@@ -3,23 +3,24 @@
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
 > **权威设计**：[`design.md`](design.md)（v0.1, 2026-07-27，含工业级审核 patch F-1..F-19）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — Phase 0 docs-only
+## 当前状态 — Phase 1+ scaffold closed (2026-07-28)
 
-- `design.md` 是唯一产出物；本仓库**没有**源代码（无 `include/AY2D/*.h`、无 `src/*.cpp`、无 `unittest/`）。
-- 仓库根 `CMakeLists.txt` / `.gitmodules` **本 Phase 不动**（见 `design.md` §4.2 + §11.1）。
-- 公共 header bgfx 守门目标 `ay2d_check_no_bgfx_in_public_headers` 是 Phase 1 退出门禁（见 `design.md` §11.2）；Phase 0 不构建该 target。
-- 修改本仓库前，先读 `design.md` 对应章节；任何**架构级**修订须追加到 `design.md` §13 Changelog / audit log（F-9）。
+- `design.md` 是权威设计（v0.1 + audit F-1..F-19 + Changelog §13.1..§13.4）。代码与 design.md 不一致时，design.md 优先。
+- 子模块已被 root 仓库注册：`option(AY_ENABLE_AY2D ... OFF)` + conditional `add_subdirectory(AYRuntime/AY2D)` (默认 OFF)。
+- 子模块 HEAD = `b38c430` (Phase 0 scaffold) + 后续 `4316cf2` + `b38c430`，最新一笔 root bump 见根仓库 `0577f42`。
+- `unittest/` 已落地（Phase 1+ stub）：`AY2D_Tests` 链接 AYTest，三个 stub 测试覆盖 §3 + §6.1 + §8.1 header 表面。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证（leak 时 EXIT=1，clean 时 EXIT=0）已通过。
 
 ## 重要规则
 
 1. **UTF-8 only，禁止 GBK 中文注释** — 与其它 sibling 模块一致；本仓库 `design.md` 中文为合法文档内容，但 `.h / .cpp / .cmake` 不应有 GBK。
 2. **代码与 design.md 不一致时，design.md 优先** — 修改设计须先改 design.md §13 Changelog，再动代码。
-3. **Phase 1+ 之前禁止**：
+3. **仍然 Phase 1+ 禁止**：
    - 写 `bgfx::*` 调用；
    - 触碰其它模块源码（详见 `design.md` §4.2.1 cross-module PR ownership）；
-   - 在本仓库 root 添加 `add_subdirectory`（根 `CMakeLists.txt` 不动）。
+   - **修改根 `AY_ENABLE_AY2D` 的默认值**——`OFF` 是用户最终决策，不容擅自改动。
 4. **公共头零 bgfx** — 所有 `include/AY2D/**/*.h` 不得 include `<bgfx/*.h>` / `<bx/*.h>` / `AYRenderer/src/detail/*`。Phase 1 CI 通过 `ay2d_check_no_bgfx_in_public_headers` target 强制（F-5）。
-5. **可主动构建 + 跑测试** — Phase 1+ 后可以使用 `cmake -B build -DAV_ENABLE_AY2D=OFF` 触发构建；Phase 0 无构建脚本（仓库尚未挂载到根 CMakeLists）。
+5. **可主动构建 + 跑测试** — 已 OK。`cmake -B build_test -G Ninja -DAY_ENABLE_AY2D=ON -DCMAKE_TOOLCHAIN_FILE=D:/Projects/vcpkg/scripts/buildsystems/vcpkg.cmake` 跑通；`ninja ay2d_check_no_bgfx_in_public_headers` 双向往返验证。
 
 ## 命名约定（与 sibling 一致）
 
