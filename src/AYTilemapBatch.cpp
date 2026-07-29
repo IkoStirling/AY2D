@@ -16,7 +16,10 @@
 
 #include <cstdint>
 
+#include "aymath/MathTypes.h"
+
 #include "AYTileCoord.h"
+#include "AYTileMath.h"
 #include "AYTileRect.h"
 
 namespace ayt::ay2d {
@@ -232,6 +235,33 @@ bool copyTileRange(Tilemap&       dst,
     }
     bumpAfterBatchWrite(dst, dExpected, grewStorage);
     return true;
+}
+
+bool setTileRange(Tilemap&             t,
+                  ayt::math::FVector2  worldMin,
+                  ayt::math::FVector2  worldMax,
+                  uint32_t             tileId) noexcept {
+    // Phase 3E (§16.3): translate world AABB to cell rect, then
+    // delegate to the cell-coord form. The pure-math
+    // `aabbOverlappingCells` returns an unclamped rect; the
+    // cell-coord `setTileRange` does its own clamp inside its
+    // `isEmpty` guard, so an AABB that lies entirely below /
+    // left of the grid (giving a rect with negative coords that
+    // cannot collapse via clamping) becomes a cell-coord no-op
+    // just like the inverse case. We also early-out on the pure
+    // math's "AABB outside grid" case by checking the cell rect
+    // before delegating — saves a function frame for the common
+    // "AABB far away" miss.
+    if (t.cols == 0 || t.rows == 0) return false;
+    // cellOrigin defaults to (0, 0) at Phase 3E scope — the ECS
+    // camera-aware path lands with the cross-module PR.
+    ayt::math::FVector2 origin{0.0f, 0.0f};
+    TileRect cells = aabbOverlappingCells(
+        worldMin, worldMax, origin,
+        static_cast<float>(t.tileWidth),
+        static_cast<float>(t.tileHeight));
+    if (isEmpty(cells)) return false;
+    return setTileRange(t, cells, tileId);
 }
 
 } // namespace ayt::ay2d

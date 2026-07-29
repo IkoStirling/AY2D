@@ -20,11 +20,14 @@
 #include <cstdint>
 #include <vector>
 
+#include "aymath/MathTypes.h"
+
 #include "AY2DCounters.h"
 #include "AYAtlasDesc.h"
 #include "AYTileAnimation.h"
 #include "AYTileCoord.h"
 #include "AYTileLoadState.h"
+#include "AYTileMath.h"
 #include "AYTileRect.h"
 
 namespace ayt::ay2d {
@@ -145,6 +148,30 @@ struct Tilemap {
                 : defaultTileId;
         }
         return idx < tileIds32.size() ? tileIds32[idx] : defaultTileId;
+    }
+
+    // Phase 3E (§16): world-coord overloads for `setTile` /
+    // `getTile`. These internally delegate to the cell-coordinate
+    // forms; the cell-coord contract (OOB drops / `defaultTileId`)
+    // carries through unchanged. `cellOrigin` defaults to world
+    // `(0, 0)` (P3E in-AY2D scope — non-zero origin lands with the
+    // ECS camera integration PR).
+    void setTile(ayt::math::FVector2 world, uint32_t tileId) noexcept {
+        const TileCoord c = worldToCell(
+            world,
+            ayt::math::FVector2{0.0f, 0.0f},
+            static_cast<float>(tileWidth),
+            static_cast<float>(tileHeight));
+        setTile(c, tileId);
+    }
+
+    [[nodiscard]] uint32_t getTile(ayt::math::FVector2 world) const noexcept {
+        const TileCoord c = worldToCell(
+            world,
+            ayt::math::FVector2{0.0f, 0.0f},
+            static_cast<float>(tileWidth),
+            static_cast<float>(tileHeight));
+        return getTile(c);
     }
 
     [[nodiscard]] bool isInRange(TileCoord cell) const noexcept {
@@ -280,5 +307,16 @@ void fillTile(Tilemap& t, uint32_t tileId) noexcept;
 // grid; `isEmpty` for an empty grid. Read-only helper; never
 // bumps counters.
 [[nodiscard]] TileRect gridRect(const Tilemap& t) noexcept;
+
+// Phase 3E (§16.3): world-coord batch overload. Translates the
+// world AABB to a cell rect via `aabbOverlappingCells`, then
+// delegates to the cell-coord `setTileRange` — so the
+// counter / lazy-fill / clamp contract is identical. Empty AABB
+// or an AABB that does not overlap the grid is a no-op.
+// Defined in src/AYTilemapBatch.cpp.
+[[nodiscard]] bool setTileRange(Tilemap&             t,
+                                ayt::math::FVector2  worldMin,
+                                ayt::math::FVector2  worldMax,
+                                uint32_t             tileId) noexcept;
 
 } // namespace ayt::ay2d

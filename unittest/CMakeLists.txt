@@ -61,6 +61,13 @@ add_executable(${TEST_TARGET}
     # design.md §13.9 / §15. One batch operation = one mutation
     # event; partial clamp is allowed; width-mismatch is no-op.
     Test_TilemapBatch.cpp
+    # Phase 3E in-AY2D tests — world↔cell coordinate math
+    # (worldToCell / cellToWorld / aabbOverlappingCells /
+    # isCellInWorldBounds + world-coord setTile/getTile/setTileRange
+    # overloads on Tilemap). design.md §13.10 / §16. Pure math,
+    # no cross-module deps, no bgfx. No new AYMath module link
+    # needed — AYMath is already linked for AYOrthographicCamera.
+    Test_TileMath.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

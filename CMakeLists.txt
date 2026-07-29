@@ -69,20 +69,27 @@ target_include_directories(${MODULE_NAME} PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-# Phase 2 keeps this PUBLIC dep list empty: AY2D's pure-CPU
-# implementation is intentionally self-contained (std::* containers
-# only). Phase 3+ adds AYResource (public headers only) for .aytilemap
-# loader wiring; Phase 5+ adds AYPhysics for ITileCollisionQuery impls.
+# Phase 2 keeps the AYFoundation PUBLIC dep list minimal:
+# AY2D's pure-CPU implementation is intentionally self-contained
+# (std::* containers only). Phase 3A added `AYMath` for
+# `OrthographicCamera` (`ayt::math::Float4x4` view/proj matrices,
+# design.md §3); Phase 3E reuses the same `AYMath` dep for the
+# new `ayt::math::FVector2` surface in `AYTileMath.h` / world-
+# coord `setTile` overloads.
+#
+# Phase 3+ (cross-module PRs, §4.2.1) adds:
+#   * AYResource public headers (for .aytilemap loader wiring)
+#   * AYRenderer public headers (for DrawItem::payload pattern)
+#   * AYEntity public headers (for AYTileMapComponent)
+# Phase 5+ adds AYPhysics for ITileCollisionQuery impls.
 # Stay within design.md §2.3 allowed deps. Never AYUI. Never bgfx.
 #
-# The PUBLIC keyword on (empty) target_link_libraries is what carries
-# the above PUBLIC include_directories through to consumers — without
-# at least one link target (or a deliberate empty PUBLIC call), CMake
-# would not propagate the include path. We achieve the same effect
-# with `set_target_properties(...)` + a placeholder compat target —
-# but the sibling idiom (`target_link_libraries(... PUBLIC)`) keeps
-# it portable.
-target_link_libraries(${MODULE_NAME} PUBLIC)
+# The PUBLIC keyword on `AYMath` is what carries both:
+#   * the link-time symbol reference (so future consumers can use
+#     `Float3x3` / `FVector2` through the AY2D umbrella), AND
+#   * the AYMath PUBLIC include path (`aymath/MathTypes.h`) so that
+#     AY2D's own .cpp files can include the math header.
+target_link_libraries(${MODULE_NAME} PUBLIC AYMath)
 
 # The static library is now consumed by both production callers AND
 # AY2D_Tests. The guard target is wired here so a `cmake --build .`
