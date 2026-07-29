@@ -1,17 +1,20 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.4, 2026-07-29，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.6）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.5, 2026-07-29，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.7）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — Phase 3 in-AY2D real impl promotions (2026-07-29)
+## 当前状态 — Phase 3B in-AY2D animation + sprite wiring (2026-07-29)
 
-- `design.md` 是权威设计（v0.1.4 + audit F-1..F-19 + Changelog §13.1..§13.6）。代码与 design.md 不一致时，design.md 优先。
+- `design.md` 是权威设计（v0.1.5 + audit F-1..F-19 + Changelog §13.1..§13.7）。代码与 design.md 不一致时，design.md 优先。
 - 子模块已被 root 仓库注册：`option(AY_ENABLE_AY2D ... OFF)` + conditional `add_subdirectory(AYRuntime/AY2D)` (默认 OFF)。
-- 子模块 HEAD = Phase 3 in-AY2D real impl：3 个 .cpp（`AYTilemap.cpp` + `AYInMemoryTilemapChunkSource.cpp` + `AYWorld2D.cpp`） + 11 个公共头（`AY2DCounters.h` 是新的） + ChunkRequestHandle 升级成 24+8 packed id with generation。
-- `unittest/` 现在有 10 个 test 文件，链接 AYTest + AYMath 跑通 10 个 TEST_SUITE / 60+ TEST_CASE。
-- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`AYMath` 是新增的 PUBLIC link 依赖（仅 OrthographicCamera 的 Float4x4 矩阵）。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过。
-- 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity maintainer 拥有各自的 merge gate。
+- 子模块 HEAD = Phase 3B in-AY2D：4 个 .cpp（新增 `AYTilemapAnimation.cpp`）+ 12 个公共头（新增 `AYTileAnimation.h`；`AYSprite.h` 升级为 real impl）。
+- `unittest/` 现在有 12 个 test 文件，链接 AYTest + AYMath 跑通 12 个 TEST_SUITE / 88 TEST_CASE / 288 CHECK assertions。
+- `Tilemap` 新增 `animationTable`（per-tile `(tileId -> [frameTileId, durationMs]*)` 表）+ `animationState`（per-tile frame index + 整数 ms remainder accumulator）+ `lastTickUs` + `hasBeenTicked` 字段；`tickTilemapAnimation(Tilemap&, int64_t nowUs)` 是 `src/AYTilemapAnimation.cpp` 里的 free function（ECS System wrapper @ priority 460 等 AYEntity 跨模块 PR）。
+- `Sprite` real impl：`Float3x3 worldMatrix` + `sourceRect` (4 UV) + `color` (4 RGBA) + `SpriteFlip` 2-bit enum + `layer` + `sortingKey` + `packedSortKey()`（mirrors `World2D::packSortKey`）。
+- **R-10 lock 守住**：AY2D 没有 AYAnimation include / link；动画表是 AY2D 自管 + AYTime-free（integer-us raw + consumers wrap `Clock::gameNow()`）。
+- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`AYMath` 是 Phase 3A 起 PUBLIC link 依赖（Float3x3 / Float4x4 矩阵）。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（新 header 只 include `<cstdint>`/`<vector>`/`aymath/MathTypes.h`）。
+- 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity / AYShader maintainer 拥有各自的 merge gate。
 
 ## 重要规则
 

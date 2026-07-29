@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 3 — in-AY2D real impl promotions (cross-module PRs still deferred).  
-> **Version**: v0.1.4 (2026-07-29).  
+> **Status**: Phase 3B — in-AY2D animation + sprite wiring (cross-module PRs still deferred).  
+> **Version**: v0.1.5 (2026-07-29).  
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -966,7 +966,7 @@ When this file is updated, append a new section here:
     fractional zoom / unsafe with fractional position / unsafe
     with non-zero gutter / default layerMask / projection matrix
     after scale.
-  - `Test_ChunkRequestHandle` — 9 cases: default invalid /
+  - `Test_ChunkRequestHandle` — 10 cases: default invalid /
     hand-constructed valid / pack index isolation / pack
     generation isolation / index mask clip / generation mask
     clip / equality requires both / `kInvalidId` /
@@ -989,3 +989,81 @@ When this file is updated, append a new section here:
   cross-module PR.
 - Phase 3 animation bake, Phase 4 streaming chunk sources, Phase 5
   ITileCollisionQuery impl.
+
+### 13.7 v0.1.5 — 2026-07-29 (Phase 3B animation + sprite wiring)
+
+**Phase**: 3B (in-AY2D scope only — animation table, sprite struct, no cross-module PRs)
+
+**Locked changes**:
+- §3 + §7.2: `Tilemap` gains `animationTable` (sparse
+  `std::vector<std::vector<TileFrame>>` indexed by source tileId) +
+  `animationState` (per-tile `currentFrameIdx` + integer-ms
+  `elapsedMs` accumulator) + `lastTickUs` baseline + `hasBeenTicked`
+  first-tick flag. Frames carry `{frameTileId, durationMs}`
+  (§7.2 + §9.4 locks). Hot-path index bound is `TileIdPackMode::Narrow16`
+  max (65 535).
+- §7.2: integer-ms remainder accumulator (`uint32_t` elapsed per tile).
+  First tick sets baseline (no initial jump); reversed clock clamps
+  to 0 (R-7 spirit); zero-duration frame is a no-op (loop break
+  prevents infinite spin). No float drift across long play sessions.
+- §7.2: `tickTilemapAnimation(Tilemap&, int64_t nowUs)` is a free
+  function in `src/AYTilemapAnimation.cpp`; `resolveAnimatedTileId(t,
+  sourceTileId)` returns the live frame's `frameTileId` when an
+  animation entry exists, else the source unchanged. `Tilemap::getTile`
+  semantics are **unchanged** (Phase 2 contract preserved across all
+  70 existing TEST_CASE); the animated lookup path is opt-in via
+  `resolveAnimatedTileId`. The future `TilemapAnimationTickSystem`
+  ECS wrapper @ priority 460 (§3.3) lands with the AYEntity
+  cross-module PR in Phase 3+.
+- §3 + §7.3: `Sprite` placeholder is promoted to a real struct.
+  Fields: `worldMatrix` (`Float3x3` affine — 2D scene, no perspective
+  column; verified to ship in `AYMath/aymath/MathTypes.h:609` with
+  `identity()` factory), `sourceRect` (4 UV floats), `color` (4 RGBA
+  floats, default opaque white), `flip` (`SpriteFlip` enum, 2-bit
+  composed), `layer` (uint8_t, 0..31), `sortingKey` (uint32_t,
+  0..0x00FFFFFF). `Sprite::packedSortKey()` mirrors `World2D::packSortKey`
+  (§7.4 lock — both helpers bit-identical).
+- §7.3: `SpriteFlip` enum + bitwise ops (`|` / `&` / `^` / `|=` / `&=`)
+  + `hasFlip(flip, bit)` predicate. Flip is per-instance, encoded into
+  the vertex stream (no extra vertex buffer; §7.3).
+- §10.2: Two new unit-test sub-suites added.
+  - `Test_TilemapAnimation` — 10 cases: empty default / single tick
+    advances / loops after full sequence / remainder accumulates
+    across small deltas (§9.4 drift check) / zero-duration no-op /
+    same-time no-op / reversed clock clamp / first-tick baseline /
+    multiple tiles independent / `resolveAnimatedTileId` returns
+    live frame.
+  - `Test_Sprite` — 8 cases: default identity / `packSortKey` layer in
+    high byte / `packSortKey` 5-bit layer mask / `packSortKey` 24-bit
+    sorting-key mask / flip bits compose / flip independent of layer
+    + sort / color default opaque white / sourceRect default full
+    atlas / worldMatrix identity default.
+  Existing tests (Phase 1+ stubs + Phase 2 functional + Phase 3A
+  real-impl) untouched. New total: **12 TEST_SUITE / 88 TEST_CASE /
+  288 CHECK assertions PASS**.
+- §2.3: `AYTileAnimation.h` is the new in-AY2D header;
+  `src/AYTilemapAnimation.cpp` is the new .cpp. **No new module deps**
+  — AYMath was already linked (Phase 3A `AYOrthographicCamera.h`); the
+  animation tick uses raw `int64_t` microseconds (no `ayt::time::TimePoint`
+  in the public API surface — consumers can wrap `Clock::gameNow()` if
+  they want, the implementation stays AYTime-free). **R-10 lock holds**:
+  no AYAnimation include, no AYAnimation link.
+- §11.2: bgfx-leak guard `ay2d_check_no_bgfx_in_public_headers` stays
+  green (12 headers scanned, 0 leaks). New headers include only
+  `<cstdint>`, `<vector>`, `aymath/MathTypes.h`.
+- §13.7: This changelog entry.
+
+**Open follow-ups**:
+- `.aytilemap` binary format that includes the animation-table section
+  (L-13 / §9.1) — cross-module PR to AYResource maintainer.
+- `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload` cross-module
+  PRs to AYRenderer (still gated per §4.2.1).
+- `AYTileMapComponent` + `AYSpriteComponent` ECS components +
+  `TilemapAnimationTickSystem` ECS wrapper @ priority 460 — cross-module
+  PR to AYEntity maintainer. The free function `tickTilemapAnimation()`
+  is the body; the system class wraps it.
+- `TilemapParallaxDemo` (Noop visual MVP) waits on `DrawItem::payload`.
+- `Test_HotReload_Tilemap` (F-11 / F-17) waits on the `.aytilemap`
+  cross-module PR.
+- Phase 4 streaming chunk sources (`Distance` / `TimeWindow` eviction
+  policies), Phase 5 `ITileCollisionQuery` impl + 2D backend pick.
