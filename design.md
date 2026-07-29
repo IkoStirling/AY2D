@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 3C — in-AY2D counter wiring (counters incremented on real mutation paths; cross-module PRs still deferred).  
-> **Version**: v0.1.6 (2026-07-29).  
+> **Status**: Phase 3D — in-AY2D batch tile-fill API shipped; cross-module PRs still deferred.  
+> **Version**: v0.1.7 (2026-07-29).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -1210,3 +1210,171 @@ adds `Test_CountersWired` on top.
 **Open follow-ups** (unchanged from §13.7): same five follow-ups
 —.aytilemap / Forward2DOpaque / AYSpriteComponent /
 TilemapParallaxDemo / Test_HotReload + Phase 4 / Phase 5.
+
+---
+
+## 15. Phase 3D batch tile-fill API
+
+> Phase 3D closes the **bulk write** hole in the `Tilemap`
+> writer. Phase 3C locked the per-cell `setTile` mutation
+> contract; Phase 3D adds the three batch-shaped entry points
+> every editor paint + chunked-loader cross-module PR will
+> reach for. Counters stay consistent: one **batch** operation
+> is one **mutation event** (regardless of how many cells it
+> touches), which is what `tiles_mutated` semantics already
+> implied.
+
+### 15.1 Surface
+
+Three new free functions + one helper accessor on `Tilemap` /
+`TileRect`:
+
+| Symbol | Returns | Purpose |
+|---|---|---|
+| `setTileRange(Tilemap&, TileRect r, uint32_t tileId)` | `bool` | overwrites cells in `r` (clamped to grid); one mutation |
+| `fillTile(Tilemap&, uint32_t tileId)` | `void` | shortcut for `setTileRange(gridRect(t), tileId)`; one mutation |
+| `copyTileRange(Tilemap& dst, TileRect dstRect, const Tilemap& src, TileCoord srcOrigin)` | `bool` | copies cells from `src` (at `srcOrigin`) into `dstRect`; width-mismatch is a F-18-style no-op |
+| `gridRect(const Tilemap&)` | `TileRect` | whole-grid half-open rect; `{0,0,cols,rows}` for sized, empty for unsized |
+| `TileRect` (new type) | POD (16 bytes, int32_t x0/y0/x1/y1) | half-open tile-grid rectangle |
+| `isEmpty / area / clampToGrid` | free helpers | algebra + grid clamp for `TileRect` |
+
+### 15.2 Semantics (locked)
+
+- Half-open `[x0, x1)` x `[y0, y1)` rect (R-3D.1).
+- Bounds clamping silently (no signal — matches `setTile` §6.3
+  silent-drop pattern).
+- Empty rect (`x1 <= x0` or `y1 <= y0`) → no-op.
+- Width mismatch on `copyTileRange` → no-op (F-18 contract).
+- One batch = one mutation: `tiles_mutated += 1` exactly,
+  regardless of cell count (R-3D.2).
+- `fillTile` is logically `setTileRange(gridRect(t), tileId)`.
+- `copyTileRange` operates on `Tilemap` data only (not
+  `ITilemapChunkSource`; that bigger interface change is
+  Phase 4).
+
+### 15.3 Lazy-fill semantics (locked, R-3D.4)
+
+Both `setTileRange` and `copyTileRange` lazily allocate the
+destination storage **on the first write that grows the grid**.
+The fill value **must be `defaultTileId`**, NOT the batch's
+`tileId` (or src's first cell). Rationale: cells outside the
+rect must read as `defaultTileId` (the Phase 2 §6.3 invariant
+`UntouchedCellReadsDefaultTileId`). If `setTileRange` pre-
+flooded with `tileId`, every cell on the grid would read as the
+batch value, breaking the contract.
+
+`tiles_resident` bumps to `expected` (= cols × rows) on the
+first batch that grew storage, mirroring `setTile`'s first-
+write behavior. Subsequent batches leave `tiles_resident` alone.
+
+### 15.4 Tests (`Test_TilemapBatch.cpp` — 10 cases)
+
+1. `SetTileRangeBasicRectangleOverwritesEveryCell` — rect
+   `{1,1,3,3}` writes cells `{1,2} x {1,2}`; outside rect
+   still reads `defaultTileId`.
+2. `SetTileRangeOutOfRangeIsNoOp` — full-OOB rect → false,
+   no delta.
+3. `SetTileRangePartialClampWritesOverlapOnly` — `{2,2,8,8}`
+   on 4×4 clamps to `{2,2,4,4}`; out-of-clamp unchanged.
+4. `SetTileRangeEmptyRectIsNoOp` — empty rect → no delta.
+5. `FillTileOverwritesEntireGridAsOneMutation` — one mutation,
+   12 cells read `tileId`.
+6. `CopyTileRangeSameModeRoundTrips` — same-mode copy lands
+   the src value on the dst cell; outside `dstRect` reads
+   `defaultTileId`.
+7. `CopyTileRangeModeMismatchIsNoOp` — Wide32 src + Narrow16
+   dst → false, dst unchanged, no delta.
+8. `CopyTileRangePartialClampPartialCopy` — dst rect + src
+   origin both partially outside; effective intersection
+   is what gets copied; outside stays default.
+9. `FirstWriteLazyFillFromBatchBumpsResidentOnce` —
+   `tiles_resident` bumps once to `expected`, NOT per-cell;
+   second batch leaves `tiles_resident` alone but adds a
+   mutation.
+10. `GridRectAccessorSpansWholeGrid` — `gridRect` covers the
+    full grid; empty grid returns `isEmpty` rect.
+
+### 15.5 Out of scope
+
+- `.aytilemap` loader using `setTileRange` (cross-module PR).
+- `AYSpriteComponent` painter (cross-module PR).
+- `ChunkSource::putRange` / `requestRange` (Phase 4 streaming).
+
+### 15.6 Risks / invariants
+
+- **R-3D.1** half-open vs closed: documented at the type +
+  locked in tests.
+- **R-3D.2** counter double-bump: every batch is exactly one
+  `fetch_add(1)` after a successful write span (continuation
+  of P3C no-double-counting).
+- **R-3D.3** `copyTileRange` width-oracle: `src.mode != dst.mode`
+  is the only failure mode.
+- **R-3D.4** `tiles_resident` lazy-fill from batch: first batch
+  that grew storage bumps it once to `cols*rows`.
+- **R-3D.5** empty grid: all batch ops no-op on unsized tilemap
+  (mirrors `setTile`).
+- **R-3D.6** bgfx-leak guard: `AYTileRect.h` is std::* + TileCoord
+  only; no new module deps. `TilemapBatch.cpp` adds no new bgfx
+  includes.
+- **R-3D.7** `src/AYTilemapBatch.cpp` is the only new .cpp;
+  appended to `SRC_FILES`.
+
+---
+
+### 13.9 v0.1.7 — 2026-07-29 (Phase 3D batch tile-fill API)
+
+**Phase**: 3D (in-AY2D scope only — batch tile-fill, no cross-module PRs)
+
+**Locked changes**:
+- §3 + §15.2: `Tilemap` gains batch write APIs —
+  `setTileRange`, `fillTile`, `copyTileRange`, `gridRect`.
+  All four live as free functions in `src/AYTilemapBatch.cpp`;
+  the existing `setTile` / `getTile` / `resizeGrid` surface
+  is unchanged.
+- §15.3 + R-3D.4 (locked bug fix noted in design): the batch
+  lazy-fill uses `defaultTileId`, NOT the batch's `tileId`. An
+  earlier draft pre-flooded with `tileId`; the implementation
+  corrected this so untouched cells continue to read
+  `defaultTileId` per Phase 2 §6.3
+  (`UntouchedCellReadsDefaultTileId` invariant).
+- §15.1: new public type `TileRect` ships in
+  `include/AYTileRect.h` (POD 16 bytes, half-open `[x0, x1)` x
+  `[y0, y1)` semantics). Free helpers `isEmpty`, `area`,
+  `clampToGrid`.
+- §15.4: batch counters = one mutation per batch operation.
+  `tiles_mutated += 1` regardless of cell count;
+  `tiles_resident = cols*rows` on first batch that grew storage,
+  not subsequently. Out-of-range / mode-mismatch / empty-rect
+  paths produce NO delta (same discipline as §14.2).
+- §15.6: bgfx-leak guard verified green at 12 → 13 public
+  headers. New file `AYTileRect.h` includes only std::* +
+  `TileRect` types — no bgfx, no bx, no `AYMath`.
+- §13.9: This changelog entry. Front-matter bumped to v0.1.7.
+
+**Open follow-ups** (unchanged from §13.7 / §13.8):
+- `.aytilemap` binary write that includes batch-paint records
+  (Phase 3+ cross-module PR).
+- `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload`
+  cross-module PRs to AYRenderer (still gated).
+- `AYTileMapComponent` + `AYSpriteComponent` + batch-paint
+  system wrapper cross-module PR to AYEntity (now that batch
+  is in-AY2D, the ECS paint component just calls `setTileRange`).
+- `TilemapParallaxDemo` (Noop visual MVP) waits on `DrawItem::payload`.
+- `Test_HotReload_Tilemap` (F-11 / F-17) waits on the `.aytilemap`
+  cross-module PR.
+- Phase 4 streaming chunk sources + Phase 5 collision impl.
+
+### 13.10 Future versions (template)
+
+When this file is updated, append a new section here:
+
+```
+### 13.X vX.Y — YYYY-MM-DD (<PR title>)
+
+**Phase**: <0..7>
+**Locked changes**:
+- <section>: <one-line summary>
+
+**Open follow-ups**:
+- <one-line summary>
+```
