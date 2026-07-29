@@ -37,6 +37,7 @@ set(SRC_FILES
     src/AYTilemap.cpp                    # loadChunkFromSource + chunk-width-mismatch guard
     src/AYInMemoryTilemapChunkSource.cpp # LRU cache + put/get/cancel/evict
     src/AYWorld2D.cpp                    # addTilemap / removeTilemap / swapTilemap + resourceEpoch
+    src/AYTilemapAnimation.cpp           # Phase 3B: tick + resolveAnimatedTileId
 )
 
 # Phase 2 is the first time the library type flips to STATIC. The

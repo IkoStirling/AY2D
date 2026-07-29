@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "AYAtlasDesc.h"
+#include "AYTileAnimation.h"
 #include "AYTileCoord.h"
 #include "AYTileLoadState.h"
 
@@ -45,6 +46,24 @@ struct Tilemap {
     // either setTile or loadChunkFromSource forces a resize.
     std::vector<uint16_t> tileIds16;
     std::vector<uint32_t> tileIds32;
+
+    // Phase 3B: per-tile animation table + state.
+    // design.md §7.2: (tileId -> [frameTileId, durationMs]*) + state.
+    // `animationTable.size()` is the largest registered sourceTileId + 1
+    // (sparse; index lookup is O(1) by tileId when in-range, no-op when
+    // out-of-range). Hot-path index bound: TileIdPackMode::Narrow16 max
+    // (65 535) caps the table extent.
+    TileAnimationTable animationTable;
+    TileAnimationState animationState;
+
+    // Phase 3B: last-tick baseline (Present-lane time). Default = 0
+    // meaning "never ticked"; the first tick sets this and returns
+    // without advancing frames (no initial jump from a stale `now`).
+    // Stored as raw us (int64_t) — the value-type `ayt::time::TimePoint`
+    // is owned by the caller; this is the cache of the last tick's
+    // clock reading.
+    int64_t lastTickUs    = 0;
+    bool    hasBeenTicked = false;
 
     // -----------------------------------------------------------------------
     // Member helpers
@@ -153,5 +172,37 @@ struct Tilemap {
 [[nodiscard]] bool loadChunkFromSource(Tilemap&             t,
                                       ITilemapChunkSource* source,
                                       ChunkCoord           coord) noexcept;
+
+// Phase 3B: advance per-tile animation state by the time elapsed
+// since the last call. `nowUs` is `ayt::time::Clock::gameNow().toUs()`
+// (or `performanceNowUs()` for tests). Free function (not member)
+// so the future `TilemapAnimationTickSystem` ECS system can call
+// it without friending, and so tests can drive it directly.
+//
+// Defined in src/AYTilemapAnimation.cpp.
+//
+// Behavior (design.md §7.2 + §9.4):
+//   * First call (`hasBeenTicked == false`) sets the baseline and
+//     returns without advancing frames (no initial jump).
+//   * Reversed clock (nowUs < lastTickUs) clamps delta to 0 (R-7
+//     spirit: never let time run backwards).
+//   * deltaMs == 0 is a no-op (no allocation, no walk).
+//   * For each tileId that has a non-empty animation entry, walks
+//     that entry: elapsedMs += deltaMs; while elapsedMs >=
+//     frame.durationMs, advance frame index (mod entry.size()) and
+//     subtract durationMs from elapsedMs. Loops around the sequence.
+//   * Animation state vectors lazily resize to the table extent
+//     (allocation only when a new higher tileId is registered).
+void tickTilemapAnimation(Tilemap& t, int64_t nowUs) noexcept;
+
+// Phase 3B: resolve the live tile id under animation. Returns the
+// `sourceTileId` unchanged when no animation entry exists (fast no-op
+// for the no-animation path — the common case).
+//
+// `sourceTileId` is the raw value from tileIds16/32 (what `setTile`
+// wrote). The animated path looks up `animationTable[sourceTileId]`
+// and returns `frames[currentFrameIdx % frames.size()].frameTileId`.
+[[nodiscard]] uint32_t resolveAnimatedTileId(const Tilemap& t,
+                                            uint32_t      sourceTileId) noexcept;
 
 } // namespace ayt::ay2d

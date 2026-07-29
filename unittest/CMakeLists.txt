@@ -47,6 +47,10 @@ add_executable(${TEST_TARGET}
     Test_OrthographicCamera.cpp
     Test_ChunkRequestHandle.cpp
     Test_Counters.cpp
+    # Phase 3B in-AY2D tests — animation table + Sprite real impl.
+    # design.md §13.7. No cross-module PRs.
+    Test_TilemapAnimation.cpp
+    Test_Sprite.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
