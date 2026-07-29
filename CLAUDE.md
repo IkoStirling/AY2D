@@ -1,19 +1,19 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.7, 2026-07-29，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.9 + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.8, 2026-07-29，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.10 + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — Phase 3D in-AY2D batch tile-fill API (2026-07-29)
+## 当前状态 — Phase 3E in-AY2D world↔cell math API (2026-07-29)
 
-- `design.md` 是权威设计（v0.1.7 + audit F-1..F-19 + Changelog §13.1..§13.9 + §14 P3C + §15 P3D）。代码与 design.md 不一致时，design.md 优先。
-- 子模块 HEAD = Phase 3D in-AY2D batch tile-fill API：`setTileRange` / `fillTile` / `copyTileRange` / `gridRect` 四个新 free function + 新公共类型 `TileRect`（half-open `[x0, x1)` x `[y0, y1)` POD 16B），全部实现在 `src/AYTilemapBatch.cpp`。
-- `unittest/` 现在有 **14** 个 test 文件 / **106** TEST_CASE / **396** CHECK assertions PASS（Phase 3C 13/96/331 → Phase 3D 14/106/396 = +1 suite, +10 case, +65 CHECK）。新增 `Test_TilemapBatch` 走真 wired delta（同 P3C 纪律）。
-- 锁行为：half-open rect · silent clamp · empty rect no-op · `copyTileRange` width-mismatch no-op（F-18）· 「one batch = one mutation」（P3C no-double-counting 继承）· batch lazy-fill 用 `defaultTileId`（不漏为 `tileId`，R-3D.4）。
-- `Tilemap` 现有 `setTile` / `getTile` / `resizeGrid` / `loadChunkFromSource` / tick 接口签名保持不变；batch 是叠加 API，不破坏 P2/P3A/P3B 任何测试。
-- `World2D::addTilemap` / `removeTilemap` / `swapTilemap` + `InMemoryTilemapChunkSource` + chunk-source mutation 路径保留 P3C 真 wired 行为。
+- `design.md` 是权威设计（v0.1.8 + audit F-1..F-19 + Changelog §13.1..§13.10 + §14 P3C + §15 P3D + §16 P3E）。代码与 design.md 不一致时，design.md 优先。
+- 子模块 HEAD = Phase 3E in-AY2D world↔cell math layer：4 个 free helpers（`worldToCell` / `cellToWorld` / `aabbOverlappingCells` / `isCellInWorldBounds`）实现在 `include/AYTileMath.h`，全部 header-only `<cmath>` + `<cstdint>` + `aymath/MathTypes.h` + in-AY2D `AYTileCoord.h` + `AYTileRect.h`。`Tilemap` 加 3 个 `FVector2` overload：`setTile(world, tileId)` / `getTile(world)` / `setTileRange(worldMin, worldMax, tileId)`（最后那个在 `src/AYTilemapBatch.cpp`）。
+- `unittest/` 现在有 **15** 个 test 文件 / **114** TEST_CASE / **431** CHECK assertions PASS（Phase 3D 14/106/396 → Phase 3E 15/114/431 = +1 suite, +8 case, +35 CHECK）。新增 `Test_TileMath` 走真 wired delta（同 P3C/P3D 纪律）。
+- 锁行为（§16.2 / R-3E.1..6）：integer-floor world→cell · 不 clamp（caller 路由到 setTile/getTile 的 OOB 契约）· cellToWorld 返回 cell CENTER（不返 corner，R-3E.5）· AABB half-open + degenerate empty · `cellSize==0` 防御性 guard，无除零。
+- `Tilemap::tileWidth`/`tileHeight` 必须 ≠ 0 才能让 world-coord overload 命中正确 cell（**测试 8 已显式 set 32×32**），helper 的 R-3E.6 zero-cellSize guard 会落到 `(0,0)` 而非 UB。
+- `World2D::addTilemap` / `removeTilemap` / `swapTilemap` + `InMemoryTilemapChunkSource` + chunk-source mutation 路径保留 P3B/P3C/P3D 真 wired 行为。
 - **R-10 lock 守住**：AY2D 没有 AYAnimation include / link；动画表是 AY2D 自管 + AYTime-free。
-- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`AYMath` 是 Phase 3A 起 PUBLIC link 依赖。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（新 header `AYTileRect.h` 只 include `<cstdint>`）。
+- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath)`（P3E commit `d544bcf` fix 了 P3A 仅在 test target link 的疏漏，让 AY2D 自己的 `.cpp` 也能拿到 `aymath/MathTypes.h` include path）。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（新 header `AYTileMath.h` 只 include `<cmath>` + `<cstdint>` + `aymath/MathTypes.h` + in-AY2D AYTileCoord/AYTileRect）。
 - 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity / AYShader maintainer 拥有各自的 merge gate。
 
 ## 重要规则

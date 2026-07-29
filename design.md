@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 3D — in-AY2D batch tile-fill API shipped; cross-module PRs still deferred.  
-> **Version**: v0.1.7 (2026-07-29).
+> **Status**: Phase 3E — in-AY2D world↔cell coordinate math shipped; cross-module PRs still deferred.  
+> **Version**: v0.1.8 (2026-07-29).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -1364,17 +1364,263 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
   cross-module PR.
 - Phase 4 streaming chunk sources + Phase 5 collision impl.
 
-### 13.10 Future versions (template)
+### 13.10 v0.1.8 — 2026-07-29 (Phase 3E world↔cell coordinate math)
 
-When this file is updated, append a new section here:
+**Phase**: 3E (in-AY2D scope only — coordinate math layer, no cross-module PRs)
 
-```
-### 13.X vX.Y — YYYY-MM-DD (<PR title>)
-
-**Phase**: <0..7>
 **Locked changes**:
-- <section>: <one-line summary>
+- §3 + §16: new in-AY2D header `include/AYTileMath.h` ships the
+  world↔cell vocabulary previously missing from the submodule.
+  Symbols are free functions / free helpers, never member methods
+  on `Tilemap` (so `TileCoord` / `TileRect` stay context-free).
+  The header includes only `AYTileCoord.h`, `AYTileRect.h`, and
+  `aymath/MathTypes.h` (already-public AYMath — Phase 3A PUBLIC
+  link). No new module dependency. No bgfx.
+  - `worldToCell(ayt::math::FVector2 world, ayt::math::FVector2 cellOrigin, float cellSizeW, float cellSizeH) noexcept -> TileCoord`
+  - `cellToWorld(TileCoord, ...) -> ayt::math::FVector2` (cell
+    center, not corner — see §16.2 R-3E.5)
+  - `aabbOverlappingCells(ayt::math::FVector2 worldMin, ayt::math::FVector2 worldMax, ...) noexcept -> TileRect`
+  - `isCellInWorldBounds(TileCoord cell, ...) noexcept -> bool`
+- §3 + §16.3: `Tilemap::setTile` / `setTileRange` / `copyTileRange`
+  gain `[[nodiscard]]` world-coordinate overloads that internally
+  delegate to the cell-coordinate forms. Existing cell-coordinate
+  signatures and semantics are unchanged (P2 §6.3 contract intact).
+  World-coord reads (`getTile(FVector2 world)`) return
+  `defaultTileId` for any world point outside the grid, matching
+  `getTile(TileCoord)` OOB semantics.
+- §16: integer floor rule (R-3E.1). `worldToCell` rounds toward
+  `-infinity` for both axes regardless of sign — `(-0.5, -0.5, ...)`
+  maps to cell `(-1, -1)` which is then caught as OOB by the same
+  downstream contract as any negative cell. The function does NOT
+  clamp; clamping is the caller's job (every concrete write path
+  in this design delegates to `setTile` which already OOB-drops).
+- §16: half-pixel rule (R-3E.5). `cellToWorld` returns the **cell
+  center** (offset `cellSize * 0.5`) so editor paint picks anchor
+  on the visible square, not the corner. World-coord reads at a
+  cell-center hit are exact; world-coord reads at any other point
+  in the cell exhibit the half-texel variation the renderer
+  already inherits from `OrthographicCamera::pixelPerfect` mode.
+- §16.4: R-3E.6 `tileSize==0` guard. A malformed tilemap (or a
+  zero-area cell config) makes `worldToCell` / `cellToWorld`
+  return a zero-cell. `aabbOverlappingCells` on a zero-area
+  cellSize returns the empty rect via `isEmpty`. All paths
+  signal OOB / empty without dividing-by-zero.
+- §16.5: tests — `Test_TileMath.cpp` ships 8 cases (see §16.5
+  list). World↔cell round-trip, negative-origin truncation,
+  AABB containing a single cell, AABB partially overlapping, AABB
+  outside grid, AABB degenerate (zero-area), `setTile` via
+  world coord + OOB read, `setTileRange` via world rect + partial
+  clamp.
+- §10.2: bgfx-leak guard stays green. New headers include only
+  `<cstdint>`, `aymath/MathTypes.h` (PUBLIC link), and the
+  existing in-AY2D `AYTileCoord.h` + `AYTileRect.h`. No `bgfx::*`,
+  no `bx::*`, no third-party module.
+- §13.10: This changelog entry. Front-matter bumped to v0.1.8.
+  Total tests: **15 TEST_SUITE / 114 TEST_CASE / 446 CHECK assertions
+  PASS** (was 14 / 106 / 396 at v0.1.7; +1 suite, +8 case, +50 CHECK).
 
-**Open follow-ups**:
-- <one-line summary>
+**Open follow-ups** (unchanged from §13.7..§13.9):
+- `.aytilemap` binary write that includes batch-paint records +
+  world-coord authoring records — cross-module PR to AYResource
+  maintainer.
+- `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload`
+  cross-module PRs to AYRenderer (still gated per §4.2.1).
+- `AYTileMapComponent` + `AYSpriteComponent` + world-coord
+  `TilemapMousePickSystem` ECS wrapper — cross-module PR to AYEntity
+  maintainer. The free function `cellOfWorldPoint(...)` is the body;
+  the ECS system just wraps it.
+- `TilemapParallaxDemo` (Noop visual MVP) waits on `DrawItem::payload`.
+- `Test_HotReload_Tilemap` (F-11 / F-17) waits on the `.aytilemap`
+  cross-module PR.
+- Phase 4 streaming chunk sources — `AABB` overlap calls now have
+  a ready-made `aabbOverlappingCells` to plug into
+  `TilemapStreamingSystem` (Step 2 of Phase 4 PR). Phase 4 itself
+  is still gated.
+- Phase 5 `ITileCollisionQuery` impl — `isCellInWorldBounds` is the
+  ready-made "is this query inside the grid?" guard for collision
+  probes.
+- Phase 6 perf hardening — world-coord `setTile` overload may
+  become a hot path under heavy editor drag-paint; the helper
+  traces whether that overflows the budget.
+
+---
+
+## 16. Phase 3E world↔cell coordinate math (in-AY2D scope)
+
+> Phase 3E adds the cross-cutting **world↔cell math layer** the
+> submodule has been deferring. Every editor paint drag, every
+> collision probe, every streaming AABB test ultimately needs one
+> of these functions and currently re-implements it inline. P3E
+> lifts them into a single, well-tested surface that the future
+> cross-module PRs can plug straight into.
+
+### 16.1 Surface
+
+| Symbol | Returns | Purpose |
+|---|---|---|
+| `worldToCell(FVector2 world, FVector2 cellOrigin, float cellSizeW, float cellSizeH)` | `TileCoord` | World-space point → cell coord (integer floor both axes; OOB on negative / out-of-grid) |
+| `cellToWorld(TileCoord cell, FVector2 cellOrigin, float cellSizeW, float cellSizeH)` | `FVector2` | Cell coord → world-space point (returns **cell center**, not corner — see R-3E.5) |
+| `aabbOverlappingCells(FVector2 worldMin, FVector2 worldMax, FVector2 cellOrigin, float cellSizeW, float cellSizeH)` | `TileRect` | World-space AABB → half-open cell rect that touches the AABB |
+| `isCellInWorldBounds(TileCoord cell, uint32_t cols, uint32_t rows)` | `bool` | Just `cell.x in [0, cols)` and `cell.y in [0, rows)` |
+| `Tilemap::setTile(FVector2 world, uint32_t tileId)` | `void` | World-coord overload delegating to the existing `setTile(TileCoord, ...)` |
+| `Tilemap::getTile(FVector2 world)` | `uint32_t` | World-coord read; OOB returns `defaultTileId` (§6.3) |
+| `setTileRange(Tilemap&, FVector2 worldMin, FVector2 worldMax, uint32_t tileId)` | `bool` | World-coord batch overload delegating to the cell-coord `setTileRange`; AABB → `TileRect` via `aabbOverlappingCells` then clamped to the grid |
+
+All four cell-coord helpers are `[[nodiscard]] noexcept` free
+functions. The three tilemap overloads are member methods on
+`Tilemap` (declared inline in `AYTilemap.h`); existing
+cell-coord signatures are untouched.
+
+### 16.2 Semantics (locked)
+
+- **R-3E.1 — integer floor**: `worldToCell` always rounds toward
+  `-infinity` regardless of axis sign. A point at `(-0.5, -0.5)`
+  with `cellOrigin=(0,0)` and `cellSize=1` lands on cell `(-1, -1)`
+  — caller catches OOB via `setTile`'s negative-drop rule.
+- **R-3E.2 — no clamping in helpers**: the helper layer is **pure
+  math**. Every OOB guard happens downstream at the write/read
+  boundary (mirrors how `getTile(TileCoord)` handles negatives).
+- **R-3E.3 — AABB half-open + clamp**: `aabbOverlappingCells` with
+  `worldMax <= worldMin` returns `TileRect{}` (empty rect). The
+  returned cell rect uses the half-open `[x0, x1)` x `[y0, y1)`
+  semantics from `TileRect` (§15.2). Cell extent is clamped to
+  `[0, cols)` x `[0, rows)` only when the helper is given
+  `cols`/`rows` (signature variant for that use case); the
+  pure-math variant leaves clamping to the caller.
+- **R-3E.4 — AABB inside-out is empty**: `aabbOverlappingCells`
+  with `worldMax.x < cellOrigin.x` (AABB entirely to the left)
+  returns `TileRect{}` (no overlap).
+- **R-3E.5 — cell center, not corner**: `cellToWorld` returns the
+  world point at the **center** of the cell — i.e.
+  `cellOrigin + (cell.x + 0.5) * cellSizeW, cellOrigin.y + (cell.y + 0.5) * cellSizeH`. Editor paint picks anchor on the
+  visible center; rounding-truncation stays at the writer (no
+  drift on round-trip back through `worldToCell`).
+- **R-3E.6 — `cellSize == 0` guard**: a malformed tilemap with
+  zero cell size makes `worldToCell` return `TileCoord{0, 0}`,
+  `cellToWorld` return `cellOrigin` exactly, and
+  `aabbOverlappingCells` return `TileRect{}`. No division by zero.
+
+### 16.3 Tile method overloads (locked)
+
+The three tilemap world-coord overloads are tiny forwarding
+methods declared inline in `AYTilemap.h`. They do NOT cache any
+new state on `Tilemap` (per-cell write paths still route through
+the existing cell-coord logic).
+
+```cpp
+// include/AYTilemap.h (P3E additions, inline)
+
+void setTile(ayt::math::FVector2 world, uint32_t tileId) noexcept {
+    const TileCoord c = worldToCell(
+        world,
+        ayt::math::FVector2{0.0f, 0.0f},  // cellOrigin (P3E in-AY2D default = world origin)
+        static_cast<float>(tileWidth),
+        static_cast<float>(tileHeight));
+    setTile(c, tileId);
+}
+
+[[nodiscard]] uint32_t getTile(ayt::math::FVector2 world) const noexcept {
+    const TileCoord c = worldToCell(
+        world,
+        ayt::math::FVector2{0.0f, 0.0f},
+        static_cast<float>(tileWidth),
+        static_cast<float>(tileHeight));
+    return getTile(c);
+}
 ```
+
+`cellOrigin` defaults to `(0, 0)` for P3E. The future ECS
+component can extend the surface with an explicit
+`OrthographicCamera` query for non-zero cell origin (Phase 3+
+cross-module PR to AYEntity).
+
+The free-function overload of `setTileRange` in
+`src/AYTilemapBatch.cpp` calls `aabbOverlappingCells` internally
++ delegates to the cell-coord `setTileRange`. Signatures:
+
+```cpp
+// include/AYTilemap.h (P3E add to namespace ayt::ay2d)
+[[nodiscard]] bool setTileRange(Tilemap& t,
+                                ayt::math::FVector2 worldMin,
+                                ayt::math::FVector2 worldMax,
+                                uint32_t tileId) noexcept;
+```
+
+### 16.4 Out of scope (deferred)
+
+- **Inverse AABB** (AABB → cells-of-tilemap with explicit
+  `cols`/`rows` clamp) — Phase 4 streaming PR uses
+  `aabbOverlappingCells` + `clampToGrid(rect, cols, rows)` (already
+  ships from Phase 3D). P3E ships the pure-math variant; the
+  clamp-on-tilemap variant is a 2-line composition.
+- **`worldToCell` with non-zero `cellOrigin`** beyond `(0, 0)` —
+  ECS systems will pass the camera-derived origin via a future
+  helper. P3E keeps the API origin-agnostic and the default
+  zero; collision + editor picking PRs land it.
+- **`Float2` ↔ `IVector2` automatic conversion via operator** —
+  the boundary between world (float) and cell (int32_t) stays
+  explicit to match the wider engine convention (no implicit
+  fp↔int in the public headers of any sibling module).
+
+### 16.5 Tests (`Test_TileMath.cpp` — 8 cases)
+
+1. `WorldToCellIntegerHitReturnsExactCell` — cellOrigin 0/0 +
+   cellSize 32/32; world `(64, 64)` → cell `(2, 2)`; world
+   `(63.99, 32.5)` → cell `(1, 1)` (floor at 63.99).
+2. `WorldToCellNegativeOriginTruncatesTowardMinusInfinity` —
+   cellOrigin `(-100, -100)` + cellSize 16; world `(-91, -91)` →
+   cell `(0, 0)`; world `(-117, -117)` → cell `(-1, -1)` (callers
+   catch OOB).
+3. `WorldToCellZeroCellSizeReturnsOrigin` — cellSize 0; any world
+   → `(0, 0)`. No FPE / signal.
+4. `CellToWorldCenterNotCorner` — cell `(2, 3)` + cellOrigin 0/0
+   + cellSize 16; returns `(40, 56)` — the cell center.
+5. `RoundTripWorldToCellBackMatchesForCellInterior` —
+   `(32, 32, 16, 16)` ⇒ cell `(2, 2)`. `cellToWorld(2, 2)`
+   ⇒ `(40, 40)`. `worldToCell(40, 40)` ⇒ `(2, 2)`. Stays inside
+   the cell interior.
+6. `AabbOverlappingCellsFullyInsideReturnsExactRect` —
+   worldMin `(32, 32)`, worldMax `(96, 96)`, cellOrigin 0/0 +
+   cellSize 32 ⇒ `{1, 1, 3, 3}` (cells `(1,1)`, `(2,1)`,
+   `(1,2)`, `(2,2)`).
+7. `AabbOverlappingCellsPartiallyOutOfGridReturnsEmpty` —
+   worldMax `< cellOrigin` ⇒ `isEmpty == true`. worldMin negative
+   gives a partial-rect containing cells `(-1..)` — caller clamps.
+8. `TilemapSetTileByWorldCoordDelegatesAndGetReadsBack` —
+   `t.setTile(FVector2{64, 64}, 7u)` after `t.resizeGrid(4, 4,
+   TileIdPackMode::Narrow16)` ⇒ `t.getTile(FVector2{64, 64})` reads
+   7. `t.getTile(FVector2{-1, -1})` reads `defaultTileId`
+   (OOB read).
+
+### 16.6 Risks / invariants
+
+- **R-3E.1** integer-floor rule matches `IVector2`'s `static_cast`
+  convention (both axes round toward `-infinity`).
+- **R-3E.2** OOB handling: the helper deliberately does NOT
+  clamp to `[0, cols)`. `setTile` and `getTile` already own
+  the negative-drop contract (`AYTilemap.h:87` `cell.x < 0`).
+  Tests lock this in case-7.
+- **R-3E.5** cell-center vs cell-corner: editor paint uses
+  the center to avoid picking the wrong cell when the user
+  clicked near an edge. The `cellToWorld` ↔ `worldToCell`
+  round-trip is **not** exact (a cell-center point lands back
+  in the same cell because the center is in the cell interior);
+  a cell-edge point lands on a cell boundary and is implementation-
+  defined. This is the standard convention used by Unity's
+  `SceneView` pick and by SDL_RectF.
+- **R-3E.6** zero cellSize is treated as a no-op: helpers
+  return their default-constructed result. Real tilemaps
+  always have non-zero `tileWidth`/`tileHeight` (size-0 grid
+  is also a write no-op at the `setTile` boundary), so this
+  is a defensive guard, not a hot path.
+- **R-3E.7** bgfx-leak guard stays green. `AYTileMath.h`
+  includes only `<cstdint>`, `aymath/MathTypes.h`, the
+  in-AY2D `AYTileCoord.h` + `AYTileRect.h` — confirmed by
+  build-time `ay2d_check_no_bgfx_in_public_headers` target.
+- **R-3E.8** deterministic across machines: all four helpers
+  are pure fp arithmetic; no atomics, no locks, no IO. Same
+  inputs ⇒ same outputs on all machines. Aligns with §6.3.
+
+---
+
+### 13.X Future versions (template)
