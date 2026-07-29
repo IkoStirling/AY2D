@@ -15,6 +15,16 @@
 //   | ay2d_draw2d_items       | uint32_t | count         |
 //   | ay2d_draw2d_pass_us     | uint64_t | microseconds  |
 //
+// Phase 3C (§14) extends the struct with three tile-dimension
+// metrics that are in-AY2D scope (no cross-module PR):
+//
+//   | ay2d_tiles_mutated      | uint64_t | count         |
+//   | ay2d_tiles_resident     | uint64_t | count         |
+//   | ay2d_tilemaps_in_world  | uint32_t | count         |
+//
+// See design.md §14.2 for the wiring contract (which mutation
+// path bumps which field).
+//
 // All counters are `std::atomic` so increments are thread-safe
 // across the Presenter / streaming system / chunk source threads.
 // Memory ordering: relaxed (counters are telemetry, not sync
@@ -55,6 +65,28 @@ struct Ay2DCounters {
     // Wall time of Draw2DPass::execute (per-frame).
     std::atomic<uint64_t> draw2d_pass_us     = 0;
 
+    // Phase 3C (§14): tile-dimension counters (in-AY2D scope).
+
+    // Cumulative count of successful tile mutations (setTile writes
+    // that landed in the storage vector, resizeGrid calls,
+    // clear() calls, loadChunkFromSource success deliveries).
+    // Failed / out-of-range operations do NOT bump this counter —
+    // see design.md §14.2 no-double-counting invariant.
+    std::atomic<uint64_t> tiles_mutated       = 0;
+
+    // Gauge: total number of tile slots currently resident in the
+    // `Tilemap::tileIds{16,32}` vector. Zero on construction; the
+    // `setTile` first-write lazy-fill bumps this to `expected =
+    // cols * rows`. `resizeGrid` / `clear` reset it back to 0.
+    // `loadChunkFromSource` success sets it to `tileIds{16,32}.size()`.
+    std::atomic<uint64_t> tiles_resident      = 0;
+
+    // Gauge: number of tilemaps currently registered in a World2D.
+    // Lifetime owner is `World2D::counters`. `addTilemap` bumps
+    // by 1; `removeTilemap` matching decrements by 1 (saturating
+    // at 0; see §14.5 R-3C.1).
+    std::atomic<uint32_t> tilemaps_in_world   = 0;
+
     // Cheap non-atomic snapshot helper. Returns a copy of the
     // current values; the snapshot is not internally consistent
     // across fields (each field is a relaxed load) but is
@@ -66,6 +98,10 @@ struct Ay2DCounters {
         uint64_t atlas_bytes;
         uint32_t draw2d_items;
         uint64_t draw2d_pass_us;
+        // Phase 3C (§14): tile-dimension metrics.
+        uint64_t tiles_mutated;
+        uint64_t tiles_resident;
+        uint32_t tilemaps_in_world;
     };
 
     [[nodiscard]] Snapshot snapshot() const noexcept {
@@ -76,6 +112,10 @@ struct Ay2DCounters {
             atlas_bytes.load(std::memory_order_relaxed),
             draw2d_items.load(std::memory_order_relaxed),
             draw2d_pass_us.load(std::memory_order_relaxed),
+            // Phase 3C.
+            tiles_mutated.load(std::memory_order_relaxed),
+            tiles_resident.load(std::memory_order_relaxed),
+            tilemaps_in_world.load(std::memory_order_relaxed),
         };
     }
 
@@ -88,10 +128,15 @@ struct Ay2DCounters {
         atlas_bytes.store(0, std::memory_order_relaxed);
         draw2d_items.store(0, std::memory_order_relaxed);
         draw2d_pass_us.store(0, std::memory_order_relaxed);
+        // Phase 3C.
+        tiles_mutated.store(0, std::memory_order_relaxed);
+        tiles_resident.store(0, std::memory_order_relaxed);
+        tilemaps_in_world.store(0, std::memory_order_relaxed);
     }
 
     // Reset the per-frame fields only (chunk_io_* and
-    // chunk_resident_count / atlas_bytes are cumulative).
+    // chunk_resident_count / atlas_bytes / tiles_mutated /
+    // tiles_resident / tilemaps_in_world are cumulative).
     void resetPerFrame() noexcept {
         draw2d_items.store(0, std::memory_order_relaxed);
         draw2d_pass_us.store(0, std::memory_order_relaxed);

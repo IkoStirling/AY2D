@@ -66,6 +66,16 @@ bool loadChunkFromSource(Tilemap&             t,
         t.tileIds32 = std::move(chunk.tileIds32);
     }
     t.loadState = TileLoadState::Loaded;
+    // Phase 3C (design.md §14.2): successful delivery bumps the
+    // resident count to the new vector size and counts as one
+    // mutation. Failure paths (null source / width mismatch /
+    // handle invalid / tryGetChunk returns false) leave both
+    // counters untouched — verified by Test_CountersWired.
+    const size_t residentCount = (t.mode == TileIdPackMode::Narrow16)
+        ? t.tileIds16.size()
+        : t.tileIds32.size();
+    t.counters.tiles_resident.store(residentCount, std::memory_order_relaxed);
+    t.counters.tiles_mutated.fetch_add(1u, std::memory_order_relaxed);
     return true;
 }
 

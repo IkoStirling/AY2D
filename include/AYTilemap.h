@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "AY2DCounters.h"
 #include "AYAtlasDesc.h"
 #include "AYTileAnimation.h"
 #include "AYTileCoord.h"
@@ -40,6 +41,14 @@ struct Tilemap {
     uint32_t           rows             = 0;
     TileIdPackMode     mode             = TileIdPackMode::Narrow16;
     TileLoadState      loadState        = TileLoadState::Unloaded;
+
+    // Phase 3C (design.md §14): tile-dimension counters.
+    // In-AY2D scope; mutated by setTile (first-write + subsequent
+    // writes), resizeGrid, clear, and loadChunkFromSource success
+    // path. No-allocation rule: increments are std::atomic
+    // fetch_add / store with relaxed ordering (counters are
+    // telemetry, not sync points). Snapshot via `counters().snapshot()`.
+    Ay2DCounters counters;
 
     // Flat storage. Only ONE of these is populated at a time; pick is
     // driven by `mode`. Lazy allocation: both vectors stay empty until
@@ -80,6 +89,7 @@ struct Tilemap {
         if (col >= cols || row >= rows) return;
         const size_t idx = static_cast<size_t>(row) * cols + col;
         const size_t expected = static_cast<size_t>(cols) * rows;
+        bool firstWrite = false;
         if (mode == TileIdPackMode::Narrow16) {
             if (tileId > 0xFFFFu) return;
             // Fill on first write. The fill value is `defaultTileId`
@@ -92,14 +102,28 @@ struct Tilemap {
                     ? uint16_t{0}
                     : static_cast<uint16_t>(defaultTileId);
                 tileIds16.assign(expected, fill);
+                firstWrite = true;
             }
             tileIds16[idx] = static_cast<uint16_t>(tileId);
         } else {
             if (tileIds32.size() != expected) {
                 tileIds32.assign(expected, defaultTileId);
+                firstWrite = true;
             }
             tileIds32[idx] = tileId;
         }
+        // Phase 3C (§14.2): only successful writes count.
+        //   * First-write lazy-fill bumps `tiles_resident` to the full
+        //     expected slot count (one bump, not per-cell). Subsequent
+        //     writes at already-allocated cells bump `tiles_mutated` by
+        //     1 and leave `tiles_resident` untouched.
+        //   * The same `tiles_mutated += 1` increment serves every
+        //     successful write (first-write and later) so the counter
+        //     mirrors mutation events, not "number of cells touched".
+        if (firstWrite) {
+            counters.tiles_resident.store(expected, std::memory_order_relaxed);
+        }
+        counters.tiles_mutated.fetch_add(1u, std::memory_order_relaxed);
     }
 
     // Get the tile-id at (col, row). Out-of-range reads return
@@ -152,12 +176,19 @@ struct Tilemap {
         tileIds16.clear();
         tileIds32.clear();
         loadState = TileLoadState::Unloaded;
+        // Phase 3C (§14.2): a successful resize is a mutation;
+        // the cleared storage means `tiles_resident` resets to 0.
+        counters.tiles_resident.store(0u, std::memory_order_relaxed);
+        counters.tiles_mutated.fetch_add(1u, std::memory_order_relaxed);
     }
 
     void clear() noexcept {
         tileIds16.clear();
         tileIds32.clear();
         loadState = TileLoadState::Unloaded;
+        // Phase 3C (§14.2): clear is a mutation; storage reset to 0.
+        counters.tiles_resident.store(0u, std::memory_order_relaxed);
+        counters.tiles_mutated.fetch_add(1u, std::memory_order_relaxed);
     }
 };
 

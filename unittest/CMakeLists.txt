@@ -51,6 +51,11 @@ add_executable(${TEST_TARGET}
     # design.md §13.7. No cross-module PRs.
     Test_TilemapAnimation.cpp
     Test_Sprite.cpp
+    # Phase 3C in-AY2D tests — counters real-wired onto mutation
+    # paths. design.md §13.8 / §14. Tests use the actual owner
+    # objects (World2D / Tilemap / InMemoryTilemapChunkSource) so
+    # the deltas are produced by real code, not manual stand-ins.
+    Test_CountersWired.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

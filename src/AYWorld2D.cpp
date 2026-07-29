@@ -33,6 +33,8 @@ TilemapHandle World2D::addTilemap(uint32_t layer, uint32_t sortingKey) noexcept 
     e.resource          = nullptr;
     entries.push_back(std::move(e));
     bumpEpoch();
+    // Phase 3C (§14.2): in-world gauge bump on successful add.
+    counters.tilemaps_in_world.fetch_add(1u, std::memory_order_relaxed);
     return entries.back().handle;
 }
 
@@ -60,6 +62,14 @@ bool World2D::removeEntryByHandle(TilemapHandle handle) {
 bool World2D::removeTilemap(TilemapHandle handle) noexcept {
     if (removeEntryByHandle(handle)) {
         bumpEpoch();
+        // Phase 3C (§14.2): decrement gauge with saturating guard
+        // (R-3C.1). On a fresh world or after an unmatched add (which
+        // never bumps), saturate to 0 instead of underflowing the
+        // uint32_t.
+        const uint32_t prev = counters.tilemaps_in_world.load(std::memory_order_relaxed);
+        if (prev > 0u) {
+            counters.tilemaps_in_world.store(prev - 1u, std::memory_order_relaxed);
+        }
         return true;
     }
     return false;
@@ -78,6 +88,8 @@ bool World2D::swapTilemap(TilemapHandle handle,
     it->layer      = newLayer;
     it->sortingKey = newSortingKey;
     bumpEpoch();
+    // Phase 3C (§14.2): swap is in-place — no count delta (only
+    // resourceEpoch bumps, per the §3.4 lock).
     return true;
 }
 
