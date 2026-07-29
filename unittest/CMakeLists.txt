@@ -33,6 +33,14 @@ add_executable(${TEST_TARGET}
     Test_TileCoord.cpp
     Test_CollisionFlags.cpp
     Test_TileIdPackMode.cpp
+    # Phase 2 functional tests — exercise the real .cpp implementations
+    # (src/AYTilemap.cpp, src/AYInMemoryTilemapChunkSource.cpp,
+    #  include/AYTileSamplerUV.h header-only math). These are the
+    # first tests with non-trivial state setup; AYTest's TU isolation
+    # means each file gets fresh state.
+    Test_Tilemap.cpp
+    Test_TileSamplerUV.cpp
+    Test_InMemoryTilemapChunkSource.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

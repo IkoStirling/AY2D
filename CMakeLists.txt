@@ -27,61 +27,66 @@ project(AY2D
 
 set(MODULE_NAME AY2D)
 
-# Phase 0 ships no source files. Phase 1+ populates SRC_FILES from
-# `src/*.cpp` here. Empty list is intentional and documents the Phase 0 exit.
+# Phase 2 ships CPU-side .cpp files. Each .cpp that knows about
+# the chunk-source bridge, LRU cache math, or any future Phoskia
+# wiring lives here. Header-only types (TileCoord, ChunkData,
+# AtlasDesc, ITilemapChunkSource, TileSamplerUV) are NOT compiled;
+# they are picked up via the AY2D INTERFACE include path by every
+# consumer that does `target_link_libraries(... AY2D)`.
 set(SRC_FILES
-    # src/AYWorld2D.cpp
-    # src/AYTilemap.cpp
-    # src/AYSprite.cpp
-    # src/AYOrthographicCamera.cpp
+    src/AYTilemap.cpp                    # loadChunkFromSource + chunk-width-mismatch guard
+    src/AYInMemoryTilemapChunkSource.cpp # LRU cache + put/get/cancel/evict
 )
 
-# Library target.
-#
-# Phase 0: INTERFACE library — no source files, no object files. INTERFACE
-# is the right "empty target" type for a Phase 0 stub because (a) it
-# requires no SOURCES list (vcpkg's strict-mode wrapper rejects empty
-# STATIC add_library), (b) it exposes target_include_directories +
-# target_link_libraries as INTERFACE properties so downstream consumers
-# can `target_link_libraries(... AY2D)` correctly, and (c) it creates no
-# .lib / .a artifact that would otherwise sit empty in the tree.
-#
-# Phase 1+ flips this to `add_library(${MODULE_NAME} STATIC ${SRC_FILES})`
-# the moment real `.cpp` files exist. The flipped form mirrors every other
-# AYRuntime/* entry (static archive). This single line is the only behavior
-# delta between Phase 0 and Phase 1+ in this file.
-#
-# Why INTERFACE today instead of declaring an inline `.cpp` that does
-# nothing: an empty-or-no-op TU is forbidden by design — the module is
-# explicitly "no code yet", and including even an empty translation unit
-# invites the "where's the actual implementation?" question in review.
-if(NOT SRC_FILES)
-    add_library(${MODULE_NAME} INTERFACE)
-else()
-    add_library(${MODULE_NAME} STATIC ${SRC_FILES})
-endif()
+# Phase 2 is the first time the library type flips to STATIC. The
+# `if(NOT SRC_FILES)` branch kept Phase 0 / Phase 1+ stub work
+# working without bundling a no-op translation unit; with real .cpp
+# files in SRC_FILES the STATIC form mirrors every other AYRuntime/*
+# entry (static archive). The library type flip is the visible
+# signal that we have left the docs-only exit and entered Phase 2
+# finite-tilemap MVP (design.md §11 Phase 1 exit -> Phase 2 entry).
+add_library(${MODULE_NAME} STATIC ${SRC_FILES})
 
-target_include_directories(${MODULE_NAME} INTERFACE
+target_include_directories(${MODULE_NAME} PUBLIC
     # Public headers live flat under `include/` (matches sibling
     # convention: AYPhysics/AYRenderer put public headers directly in
     # `include/` with no subdirectory). Consumers write
     # `#include "AYWorld2D.h"` (no namespace prefix in the include path)
     # or use the umbrella `#include <AY2D.h>`.
+    #
+    # PUBLIC (not INTERFACE) is required: when the target type flips
+    # from INTERFACE to STATIC at Phase 2 entry (this commit),
+    # PUBLIC makes the include path available to (a) the AY2D target's
+    # own source files when they `#include "AY<X>.h"`, AND (b) any
+    # consumer (unittest, future AYEntity / AYResource consumers).
+    # INTERFACE alone would (1) make STATIC targets forget self-include,
+    # since an INTERFACE-only target has no compilable sources of its
+    # own. Locked in design.md §2.2 / §4 boundary rules.
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
-# Phase 0 has no real link surface. The INTERFACE deps list below is empty by
-# design. Phase 1+ adds per-design.md §2.3 allowed-dependencies list:
-#   AYMath, AYIO, AYResource (interface only), AYEntity (interface only),
-#   AYRenderer (PUBLIC headers only; never src/detail/*), AYShader
-#   (PUBLIC headers only), AYGameLoop, AYTime. Never AYUI. Never bgfx.
-target_link_libraries(${MODULE_NAME} INTERFACE
-    # AYMath
-    # AYIO
-    # AYShader (public headers only)
-    # ...
-)
+# Phase 2 keeps this PUBLIC dep list empty: AY2D's pure-CPU
+# implementation is intentionally self-contained (std::* containers
+# only). Phase 3+ adds AYResource (public headers only) for .aytilemap
+# loader wiring; Phase 5+ adds AYPhysics for ITileCollisionQuery impls.
+# Stay within design.md §2.3 allowed deps. Never AYUI. Never bgfx.
+#
+# The PUBLIC keyword on (empty) target_link_libraries is what carries
+# the above PUBLIC include_directories through to consumers — without
+# at least one link target (or a deliberate empty PUBLIC call), CMake
+# would not propagate the include path. We achieve the same effect
+# with `set_target_properties(...)` + a placeholder compat target —
+# but the sibling idiom (`target_link_libraries(... PUBLIC)`) keeps
+# it portable.
+target_link_libraries(${MODULE_NAME} PUBLIC)
+
+# The static library is now consumed by both production callers AND
+# AY2D_Tests. The guard target is wired here so a `cmake --build .`
+# inside AY2D always runs the bgfx-leak check. (This used to be a
+# "Phase 1+ deferred" comment; the INTERFACE->STATIC flip re-enables
+# the wire-up since add_dependencies on a STATIC target is valid.)
+add_dependencies(${MODULE_NAME} ay2d_check_no_bgfx_in_public_headers)
 
 # ----------------------------------------------------------------------------
 # Phase 1 guard target: ay2d_check_no_bgfx_in_public_headers

@@ -3,13 +3,14 @@
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
 > **权威设计**：[`design.md`](design.md)（v0.1, 2026-07-27，含工业级审核 patch F-1..F-19）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — Phase 1+ scaffold closed (2026-07-28)
+## 当前状态 — Phase 2 finite-tilemap CPU MVP (2026-07-29)
 
-- `design.md` 是权威设计（v0.1 + audit F-1..F-19 + Changelog §13.1..§13.4）。代码与 design.md 不一致时，design.md 优先。
+- `design.md` 是权威设计（v0.1 + audit F-1..F-19 + Changelog §13.1..§13.5）。代码与 design.md 不一致时，design.md 优先。
 - 子模块已被 root 仓库注册：`option(AY_ENABLE_AY2D ... OFF)` + conditional `add_subdirectory(AYRuntime/AY2D)` (默认 OFF)。
-- 子模块 HEAD = `b38c430` (Phase 0 scaffold) + 后续 `4316cf2` + `b38c430`，最新一笔 root bump 见根仓库 `0577f42`。
-- `unittest/` 已落地（Phase 1+ stub）：`AY2D_Tests` 链接 AYTest，三个 stub 测试覆盖 §3 + §6.1 + §8.1 header 表面。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证（leak 时 EXIT=1，clean 时 EXIT=0）已通过。
+- 子模块 HEAD = Phase 2 CPU MVP：两个 .cpp（`AYTilemap.cpp` + `AYInMemoryTilemapChunkSource.cpp`） + 5 个新公共头（`AYChunkRequestHandle.h` / `AYChunkData.h` / `AYTileCoord.h` / `AYAtlasDesc.h` / `AYTileLoadState.h` / `AYTilemapChunkSource.h` / `AYInMemoryTilemapChunkSource.h` / `AYTileSamplerUV.h`）。
+- `unittest/` 已经有 6 个 stub/functional test 文件，链接 AYTest 跑通 6 个 TEST_SUITE / 30+ TEST_CASE。
+- `add_library(AY2D STATIC ${SRC_FILES})` 取代之前的 INTERFACE — 是 Phase 2 的可见起点（design.md §13.5）。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过。
 
 ## 重要规则
 

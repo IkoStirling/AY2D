@@ -852,3 +852,63 @@ When this file is updated, append a new section here:
 - `RenderPassSlot::Forward2DOpaque` and `DrawItem::payload` cross-module PRs (gated on AYRenderer maintainer per §4.2.1).
 - `IAYTilemap.h` / `IAYTileset.h` cross-module PR (gated on AYResource maintainer per §4.2.1).
 - `Test_HotReload_Tilemap` (F-11 / F-17) and visual / performance tests (F-7) deferred to Phase 2 alongside `.aytilemap` loader.
+
+### 13.5 v0.1.3 — 2026-07-29 (Phase 2 finite-tilemap CPU MVP)
+
+**Phase**: 2 (finite tilemap — CPU side only)
+**Locked changes**:
+- §3 + §6: First CPU-side .cpp implementations land.
+  - `src/AYTilemap.cpp` — `loadChunkFromSource(t, source, coord)` is the
+    first real .cpp in the module. Handles the four failure paths
+    (null source / invalid handle / width mismatch / sync retry) and
+    drives `loadState` through `Unloaded → Loading → Loaded | Failed`.
+  - `src/AYInMemoryTilemapChunkSource.cpp` — LRU cache + `put` /
+    `tryGetChunk` / `requestChunk` / `cancelChunk` round-trip;
+    eviction policy **locked to LRU** (Phase 2 default; `Distance` /
+    `TimeWindow` arrive with Phase 4 streaming).
+- §6.1 storage width (`TileIdPackMode`) **single source of truth** is
+  `include/AYTileCoord.h`. Both `AYChunkData` and `AYTilemap` now
+  include `AYTileCoord.h` for the enum, avoiding any future ODR risk.
+- §5.1 + §5.2 + §5.3: Header-only `AYTileSamplerUV.h` lands.
+  - `tileUV(tileId, AtlasDesc)` returns the half-texel-center UV
+    rect with gutter extrusion.
+  - `isValidAtlasDesc(desc)` locks `gutter < min(tileWidth,
+    tileHeight) / 2`.
+  - `isPixelPerfectSafe(invariants)` codifies the four invariants
+    from §5.3 (integer world pos + integer camera zoom + gutter == 0
+    + integer viewport scale) — pixel-perfect is false if ANY one
+    breaks. The four invariants were listed in prose before; this
+    is the single source of truth that Editor viewport + RenderSystem
+    both query.
+- §6.2 `ITilemapChunkSource` interface + `AYChunkData` payload structure
+  now live in AY2D-internal headers (no cross-module PR required).
+  Production chunks still arrive via Phase 3+ cross-module PR
+  (per §4.2.1: AYResource maintainer owns `IAYTilemap.h`).
+- CMakeLists: `add_library(AY2D INTERFACE)` is **flipped to STATIC**
+  with two real .cpp files. This is the visible signal that Phase 0
+  / Phase 1+ docs-only exit closed and Phase 2 CPU MVP opened.
+- §10.2: Three new unit-test sub-suites added.
+  - `Test_Tilemap` — 10 cases: round-trip / out-of-range drop / Narrow
+    rejects wide tile ids / chunk-source swap / width-mismatch
+    failure / null source failure / isInRange / defaultTileId /
+    resize clears / flagsAt default returns Empty.
+  - `Test_TileSamplerUV` — 6 cases: default-zero UV / atlas
+    validation rule / half-texel center / gutter shrink / tile-id
+    layout / pixel-perfect invariants gate.
+  - `Test_InMemoryTilemapChunkSource` — 6 cases: round-trip /
+    double-insert refusal / LRU eviction / async-handle-issued
+    states / cancel-no-op / unknown-chunk returns false.
+  Existing stubs (`Test_TileCoord` / `Test_CollisionFlags` /
+  `Test_TileIdPackMode`) untouched.
+
+**Open follow-ups**:
+- `.aytilemap` binary format + IAYTilemap cross-module PR (still
+  gated on AYResource maintainer per §4.2.1).
+- `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload` cross-module
+  PRs to AYRenderer.
+- `AYTileMapComponent` ECS component cross-module PR to AYEntity.
+- `TilemapParallaxDemo` (the noop-visual MVP that proves the chain).
+- `Test_HotReload_Tilemap` (F-11 / F-17) waits on the `.aytilemap`
+  cross-module PR.
+- Phase 3 animation bake, Phase 4 streaming chunk sources, Phase 5
+  ITileCollisionQuery impl.
