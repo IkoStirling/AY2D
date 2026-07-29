@@ -56,6 +56,11 @@ add_executable(${TEST_TARGET}
     # objects (World2D / Tilemap / InMemoryTilemapChunkSource) so
     # the deltas are produced by real code, not manual stand-ins.
     Test_CountersWired.cpp
+    # Phase 3D in-AY2D tests — batch tile-fill APIs
+    # (setTileRange / fillTile / copyTileRange / gridRect).
+    # design.md §13.9 / §15. One batch operation = one mutation
+    # event; partial clamp is allowed; width-mismatch is no-op.
+    Test_TilemapBatch.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

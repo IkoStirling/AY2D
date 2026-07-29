@@ -25,6 +25,7 @@
 #include "AYTileAnimation.h"
 #include "AYTileCoord.h"
 #include "AYTileLoadState.h"
+#include "AYTileRect.h"
 
 namespace ayt::ay2d {
 
@@ -235,5 +236,49 @@ void tickTilemapAnimation(Tilemap& t, int64_t nowUs) noexcept;
 // and returns `frames[currentFrameIdx % frames.size()].frameTileId`.
 [[nodiscard]] uint32_t resolveAnimatedTileId(const Tilemap& t,
                                             uint32_t      sourceTileId) noexcept;
+
+// Phase 3D (design.md §15): bulk write APIs. The three batch
+// operations are **one mutation event each** for `tiles_mutated`
+// counting purposes — regardless of how many cells they touch. The
+// per-cell semantics for `tiles_resident` follow the same first-
+// write lazy-fill pattern as `setTile` (§14.2 R-3D.4).
+
+// Overwrite every cell inside `r` (half-open `[x0, x1)` x `[y0,
+// y1)`) with `tileId`. Cells in `r` are clamped to [0, cols) x
+// [0, rows). A rect with zero overlap (fully outside the grid)
+// is a no-op (returns false, no counter delta). An empty rect
+// (`isEmpty(r) == true`) is also a no-op. Successful writes
+// (matching in-range overlap of ≥1 cell) return true and bump
+// `tiles_mutated` by 1.
+//
+// Defined in src/AYTilemapBatch.cpp.
+[[nodiscard]] bool setTileRange(Tilemap& t, TileRect r, uint32_t tileId) noexcept;
+
+// Fill the entire grid with `tileId`. Logically equivalent to
+// `setTileRange(t, gridRect(t), tileId)`; exists as a separate
+// symbol so editor paint can express the intent directly. Always
+// one mutation event when the grid is sized and non-empty.
+//
+// Defined in src/AYTilemapBatch.cpp.
+void fillTile(Tilemap& t, uint32_t tileId) noexcept;
+
+// Copy cells from `src` starting at `srcOrigin` into `dst` filling
+// `dstRect`. dstRect is clamped to dst's grid; the source span is
+// clamped to `src` bounds. Returns true iff at least one cell was
+// copied. Width-mismatch (`src.mode != dst.mode`) is a contract
+// violation that returns false without writing or bumping counters
+// (mirrors `loadChunkFromSource` F-18 / §11.3). Successful copies
+// (matching mode + ≥1 cell) bump `tiles_mutated` by 1.
+//
+// Defined in src/AYTilemapBatch.cpp.
+[[nodiscard]] bool copyTileRange(Tilemap&       dst,
+                                 TileRect       dstRect,
+                                 const Tilemap& src,
+                                 TileCoord      srcOrigin) noexcept;
+
+// Whole-grid half-open rect. `{0, 0, cols, rows}` for a sized
+// grid; `isEmpty` for an empty grid. Read-only helper; never
+// bumps counters.
+[[nodiscard]] TileRect gridRect(const Tilemap& t) noexcept;
 
 } // namespace ayt::ay2d

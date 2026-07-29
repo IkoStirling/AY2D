@@ -15,6 +15,7 @@
 #include "AYTileAnimation.h"
 #include "AYTileCoord.h"
 #include "AYTileLoadState.h"
+#include "AYTileRect.h"
 #include "AYTilemapChunkSource.h"
 #include "AYTilemap.h"
 #include "AYWorld2D.h"
