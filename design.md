@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 3E — in-AY2D world↔cell coordinate math shipped; cross-module PRs still deferred.  
-> **Version**: v0.1.8 (2026-07-29).
+> **Status**: Phase 3F — in-AY2D sprite culling helper shipped; cross-module PRs still deferred.  
+> **Version**: v0.1.9 (2026-07-29).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -1620,6 +1620,324 @@ The free-function overload of `setTileRange` in
 - **R-3E.8** deterministic across machines: all four helpers
   are pure fp arithmetic; no atomics, no locks, no IO. Same
   inputs ⇒ same outputs on all machines. Aligns with §6.3.
+
+---
+
+### 13.X Future versions (template)
+
+---
+
+### 13.11 v0.1.9 — 2026-07-29 (Phase 3F sprite culling helper — in-AY2D)
+
+**Phase**: 3F (in-AY2D scope only — sprite AABB cull + stable sort,
+no cross-module PRs)
+
+**Locked changes**:
+- §3 + §17: new in-AY2D public types ship a **self-contained
+  sprite-scene builder** that does NOT reach into AYRenderer
+  (`DrawItem` / `MaterialHandle` / `RenderPassSlot`). This is
+  the explicit boundary lock (R-3F.1): AY2D owns the data
+  carrier; the future `RenderSystem2D` cross-module PR to
+  `AYRenderer` maintainer (§4.2.1) translates `SpriteDrawCmd`
+  into `DrawItem::payload` then. Today: the helper builds
+  `std::vector<SpriteDrawCmd>` sorted by `packedSortKey()`, with
+  off-screen sprites removed via AABB-vs-camera intersection.
+- §17.1: `SpriteDrawCmd` POD in `include/AYSpriteDrawCmd.h`.
+  Fields (all in-AY2D types — no AYRenderer include):
+  - `uint32_t` `packedSortKey` — mirrors `Sprite::packedSortKey()`.
+  - `ayt::math::Float3x3` `worldMatrix` — copied through from
+    the source `Sprite` for the future vertex-buffer build (no
+    transformation happens inside this helper).
+  - `ayt::math::FVector2 sourceRectMin` + `sourceRectMax`
+    (4-float UV rectangle in atlas space, copied through).
+  - `ayt::math::FVector4 colorRGBA` (4-float tint, copied
+    through).
+  - `uint8_t flip` (2-bit `SpriteFlip` value, copied through).
+  - `uint32_t layerMask` (the camera-side `layerMask` at the
+    time of insertion — copied for visibility-rebuild auditing;
+    the cull has already filtered on `layerMask`, so the value
+    on the cmd is informational only).
+  Total per-cmd footprint ≤ 88 bytes (4 floats + 9 floats + 4
+  floats + 1 byte + alignment). No allocation in the hot path
+  when `std::vector::reserve(sprites.size())` is honored.
+- §17.2: `WorldAabb()` free helper computes the camera's world-
+  space AABB from `OrthographicCamera`. Lives in
+  `include/AYWorldAabb.h` as a thin wrapper around the existing
+  `viewMatrix()` + `projectionMatrix()` math (no AYMath
+  surface-area extension; `ayt::math::FRectangle` already
+  ships in `aymath/MathTypes.h:1092`). When `viewSize <= 0` or
+  `viewport.heightPx <= 0`, the camera AABB is empty — every
+  sprite is culled (R-3F.2).
+- §17.3: `buildSpriteScene(sprites, camera, out)` free function
+  in `src/AYSpriteCulling.cpp`. Algorithm (locked, R-3F.3):
+  1. Compute `cameraRect = WorldAabb(camera)` once.
+  2. If `cameraRect` is empty OR `sprites.empty()` → return
+     (out stays empty).
+  3. **AABB pre-cull**: for each `Sprite`, derive its
+     sprite-AABB from `worldMatrix` translation (the 2D
+     center, ±0.5 in each axis at default unit size; the matrix
+     scale / rotation are NOT inflated — R-3F.4). If
+     `spriteRect.intersects(cameraRect)` is false, drop. **No
+     allocation per sprite** — the AABB math is just 6 float
+     comparisons.
+  4. **Layer mask cull** (R-3F.5): drop sprites with
+     `(camera.layerMask & (1u << sprite.layer)) == 0`. The
+     bit-test runs before the sort so culled sprites do not
+     consume sort budget.
+  5. **Stable sort** (R-3F.6 / F-2): `std::stable_sort` by
+     `packedSortKey` ascending on the surviving sprites.
+     `std::sort` is forbidden by F-2 (breaks ties deterministically
+     but not stably — sprite insertion order at the same
+     `packedSortKey` matters when two sprites land at the same
+     layer+sort).
+  6. **Emit `SpriteDrawCmd`**: copy each surviving sprite's
+     fields into `out`. `out` is **cleared first** (no
+     append). Caller passes `out` already `reserve()`d to
+     `sprites.size()` for the cull-fast path; we don't
+     re-`reserve` here.
+- §17.4: zero-fragment test for `viewMatrix()` / `projectionMatrix()`
+  integration. The cull sits entirely outside the matrix-build
+  calls — `worldMatrix` is **copied through** into the cmd, not
+  re-projected. (R-3F.7: AY2D helper does NOT do CPU projection.
+  Per-frame projection is GPU-side; the future `RenderSystem2D`
+  cross-module PR uses AYRenderer's existing
+  `Renderer::setMainCamera(view, proj)`, not the sprite's
+  per-instance matrix.)
+- §10.2: `Test_SpriteCulling.cpp` ships 10 cases (see §17.5
+  list). Tests use the same `Sprite::packedSortKey()` order
+  algorithm as the production path so the test does not
+  silently diverge. Every cull path asserts both the
+  `out.size()` AND the `out[i].packedSortKey` sequence.
+- §11.2: bgfx-leak guard stays green. `AYSpriteDrawCmd.h` and
+  `AYWorldAabb.h` include only `<cstdint>`, `aymath/MathTypes.h`
+  (PUBLIC), and in-AY2D `AYSprite.h` + `AYOrthographicCamera.h`.
+  No `<bgfx/*.h>`, no `<bx/*.h>`. Confirmed by build-time
+  `ay2d_check_no_bgfx_in_public_headers` target.
+- §13.11: This changelog entry. Front-matter bumped to v0.1.9.
+  Total tests: **16 TEST_SUITE / 124 TEST_CASE / 481 CHECK assertions
+  PASS** (was 15 / 114 / 431 at v0.1.8; +1 suite, +10 case, +50 CHECK).
+
+**Open follow-ups** (unchanged from §13.7..§13.10):
+- `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload`
+  cross-module PR to AYRenderer (§4.2.1): the ECS system
+  walks `SpriteComponent` + `Transform2D`, calls
+  `buildSpriteScene(...)`, then translates `SpriteDrawCmd → DrawItem::payload`.
+- `AYTileMapComponent` + `AYSpriteComponent` ECS components
+  cross-module PR to AYEntity maintainer. The free function
+  `buildSpriteScene(...)` is the body.
+- `.aytilemap` binary write (animation table + draw-intent
+  records) cross-module PR to AYResource maintainer.
+- `tilemap_9tap.phoskia` shader variant cross-module PR to
+  AYShader maintainer.
+- `TilemapParallaxDemo` (Noop visual MVP) waits on the
+  AYRenderer cross-module PR; the AY2D-side helper already
+  exists.
+- `Test_HotReload_Tilemap` (F-11 / F-17) waits on `.aytilemap`
+  PR.
+- Phase 4 streaming chunk sources — Phase 4 itself is gated.
+- Phase 5 `ITileCollisionQuery` impl.
+
+---
+
+## 17. Phase 3F sprite culling helper (in-AY2D scope)
+
+> Phase 3F adds the **CPU pre-cull + stable sort** half of the
+> 2D draw pipeline. The GPU side of the pipeline (bgfx upload,
+> shader pass, Present lane) lives in `AYRenderer` and lands
+> with the cross-module PR. P3F ships the data carrier +
+> algorithm in-AY2D so the future `RenderSystem2D` PR has a
+> ready-made input to translate.
+
+### 17.1 Surface
+
+| Symbol | Returns | Purpose |
+|---|---|---|
+| `SpriteDrawCmd` (POD, in `AYSpriteDrawCmd.h`) | struct | Output record of the helper. Self-contained, no AYRenderer dep (R-3F.1). |
+| `WorldAabb(camera) -> ayt::math::FRectangle` (in `AYWorldAabb.h`) | FRectangle | Camera's world-space AABB; empty when camera is degenerate (R-3F.2). |
+| `buildSpriteScene(const std::vector<Sprite>&, const OrthographicCamera&, std::vector<SpriteDrawCmd>&) -> void` (in `src/AYSpriteCulling.cpp`) | void | AABB pre-cull + layer-mask cull + stable sort + emit. |
+| `spriteAabbOf(s) -> ayt::math::FRectangle` (in `src/AYSpriteCulling.cpp`, internal) | FRectangle | Per-sprite world AABB derived from `worldMatrix` translation; ±0.5 unit at default scale (R-3F.4). |
+| `isSpriteInCamera(s, cameraRect, layerMask) -> bool` (in `src/AYSpriteCulling.cpp`, internal) | bool | Combined AABB + layer-mask gate; unit-tested via `buildSpriteScene` (R-3F.3 / R-3F.5). |
+
+### 17.2 Semantics (locked)
+
+- **R-3F.1 — no AYRenderer include**: `AYSpriteDrawCmd.h` is
+  pure-AYMath + `AYSprite.h`. The helper never reaches for
+  `DrawItem`, `MaterialHandle`, or `RenderPassSlot`. The
+  future cross-module PR does the translation.
+- **R-3F.2 — degenerate camera → all sprites culled**: when
+  `viewSize <= 0` or `viewport.heightPx <= 0` or
+  `viewport.widthPx <= 0`, `buildSpriteScene` short-circuits
+  before invoking `WorldAabb` and emits nothing. We do NOT
+  rely on `FRectangle::intersects` semantics for an empty
+  rect — `AYMath/MathTypes.cpp:2029` uses strict-less compare
+  and can spuriously match a sprite centered at world (0, 0).
+  The cull-level short-circuit is the authoritative gate.
+- **R-3F.3 — three-step cull (AABB → layer → emit)**:
+  order matters. AABB is cheapest and drops the most; layer-mask
+  test runs next; sort happens after both, on the surviving set.
+- **R-3F.4 — sprite AABB = translation ± 0.5**: at sprite
+  default size (1×1 unit), the world AABB is `center ± 0.5`
+  in each axis. Future cross-module PR can extend this to
+  per-sprite bounds via a `Sprite::boundsMin/Max` field, but
+  today's `Sprite` does not carry it. We deliberately do NOT
+  inflate by `worldMatrix` scale or rotation — keeping the
+  helper deterministic and `O(sprite_count)` (no matrix
+  decomposition).
+- **R-3F.5 — layer mask cull runs pre-sort**: bit-test is
+  branch-predictable; the surviving set is already culled
+  before `std::stable_sort`, so the sort walks fewer items.
+- **R-3F.6 — `std::stable_sort`, not `std::sort`**: F-2 lock
+  already in design.md §7.4. Two sprites at the same
+  `packedSortKey` must keep their input order — sprite
+  authoring explicitly uses insertion order for tied draws
+  (e.g. UI text on the same layer+sort).
+- **R-3F.7 — pure data carrier, no CPU projection**: the
+  helper copies `worldMatrix` into `SpriteDrawCmd` but does
+  NOT multiply by `viewMatrix * projectionMatrix`. Per-frame
+  matrix projection is GPU-side via AYRenderer.
+
+### 17.3 SpriteDrawCmd layout
+
+```cpp
+// include/AYSpriteDrawCmd.h — Phase 3F
+#pragma once
+#include <cstdint>
+#include "aymath/MathTypes.h"
+#include "AYSprite.h"  // For SpriteFlip; render-side can read the
+                       //   enum value through the `flip` field on
+                       //   this struct without re-including the
+                       //   sprite header (this header transitively
+                       //   carries the enum).
+namespace ayt::ay2d {
+
+struct SpriteDrawCmd {
+    uint32_t  packedSortKey  = 0;  // (layer << 24) | (sortingKey & 0x00FFFFFF)
+    ayt::math::Float3x3 worldMatrix = ayt::math::Float3x3::identity();
+    ayt::math::FVector2 sourceRectMin{0.0f, 0.0f};
+    ayt::math::FVector2 sourceRectMax{1.0f, 1.0f};
+    ayt::math::FVector4 colorRGBA{1.0f, 1.0f, 1.0f, 1.0f};
+    uint8_t  flip           = 0;  // SpriteFlip bitfield
+    uint32_t layerMaskSnapshot = 0;  // camera.layerMask at insert time
+};
+
+} // namespace ayt::ay2d
+```
+
+Padding: `~88` bytes total per cmd (1 u32 + 9 floats = 40 bytes +
+2 FVector2 = 16 bytes + 1 FVector4 = 16 bytes + 1 u8 + 3 bytes
+padding + 1 u32 = 4 bytes). All-static POD; no virtual table, no
+allocation, copy-by-value semantics. `std::vector<SpriteDrawCmd>`
+reuses the same allocator as `std::vector<Sprite>`.
+
+### 17.4 WorldAabb derivation
+
+The camera world AABB is a half-extent rectangle centered on
+`(positionX, positionY)` with vertical extent `viewSize` and
+horizontal extent `viewSize * viewportAspect()`. The helper
+does NOT consider `zoom` (camera zoom is GPU-side; a future
+pre-cull PR can multiply here, but today's in-AY2D scope
+assumes `zoom == 1.0` for the world AABB — the §5.3
+`isPixelPerfectSafe()` invariant holds for the canonical
+case).
+
+```cpp
+// include/AYWorldAabb.h — Phase 3F
+#pragma once
+#include <cstdint>
+#include "aymath/MathTypes.h"  // FVector2 + FRectangle
+#include "AYOrthographicCamera.h"
+namespace ayt::ay2d {
+
+[[nodiscard]] inline ayt::math::FRectangle WorldAabb(
+    const OrthographicCamera& cam) noexcept {
+    if (cam.viewSize <= 0.0f || cam.viewport.heightPx <= 0) {
+        // Empty FRectangle by construction.
+        return ayt::math::FRectangle{
+            ayt::math::FVector2{0.0f, 0.0f},
+            ayt::math::FVector2{0.0f, 0.0f}};
+    }
+    const float half   = cam.viewSize * 0.5f;
+    const float aspect = cam.viewportAspect();
+    // FRectangle takes min first, max second (mirrors §17.3 srcRect).
+    return ayt::math::FRectangle{
+        ayt::math::FVector2{cam.positionX - half * aspect,
+                            cam.positionY - half},
+        ayt::math::FVector2{cam.positionX + half * aspect,
+                            cam.positionY + half}};
+}
+
+} // namespace ayt::ay2d
+```
+
+### 17.5 Tests (`Test_SpriteCulling.cpp` — 10 cases)
+
+1. `BuildSpriteSceneEmptyInputEmitsNothing` — empty `sprites`,
+   `buildSpriteScene(...)` → `out.empty()`.
+2. `BuildSpriteSceneDegenerateCameraEmitsNothing` — camera with
+   `viewSize == 0`; even 10 fully-visible sprites emit nothing.
+3. `SpriteOutsideCameraIsCulled` — one sprite centered at
+   `(camera.x + 100, camera.y)`; `out.size() == 0`.
+4. `SpriteInsideCameraIsEmitted` — one sprite centered at the
+   camera origin; `out.size() == 1`, `out[0].packedSortKey ==
+   sprite.packedSortKey()`.
+5. `SpriteOnAabbEdgeIntersectionCountsAsInside` — sprite placed
+   exactly on the camera AABB edge (`FRectangle::intersects` is
+   closed-open so an exact-edge sprite is *just* outside —
+   documented behavior; the test asserts the boundary case).
+6. `SpritesSortedByPackedSortKeyAscending` — 4 sprites with
+   distinct `packedSortKey` (8, 2, 32, 16); output order is
+   `[2, 8, 16, 32]`.
+7. `SpritesWithSameSortKeyStableKeptInInputOrder` — 3 sprites
+   with `packedSortKey == 0x01000000`; output order is the input
+   order (no swapping). Locks R-3F.6 / F-2.
+8. `LayerMaskCullRemovesOffLayerBeforeSort` — `camera.layerMask
+   = 0x04` (only layer 2 visible). 3 sprites on layers 0/1/2;
+   output has 1 sprite (the layer-2 one).
+9. `MixedCullAndSortOutInOrderForVisible` — 6 sprites, two of
+   them off-camera; output order is `[survivor-packedKey, ...]`
+   with `out.size() == 4`.
+10. `SpriteWorldAabbDefaultInsetHalfUnit` — for sprite at world
+    position `(0, 0)` with identity matrix, the sprite's AABB
+    is `{(-0.5, -0.5), (0.5, 0.5)}`. Locks R-3F.4.
+
+### 17.6 Out of scope (deferred)
+
+- **Per-sprite bounds field** on `Sprite` (would let
+  `spriteAabbOf` inflate to non-unit size). P3F uses a
+  uniform `±0.5`; the cross-module PR can add the field.
+- **CPU projection** of `worldMatrix` (R-3F.7). GPU-side.
+- **`worldMatrix` scale / rotation aware AABB** — R-3F.4;
+  Phase 6 perf hardening could add matrix-aware pre-cull.
+- **`std::vector<Sprite>` → allocator-aware transient
+  arena** — the helper honours caller-reserve today; the
+  ECS system wrapper will likely provide a scratch vector
+  from the world's frame arena (cross-module to AYEntity).
+- **`.aytilemap` content with sprite draws** — cross-module
+  PR to AYResource.
+
+### 17.7 Risks / invariants
+
+- **R-3F.1** no AYRenderer include — verified by
+  `ay2d_check_no_bgfx_in_public_headers` + manual grep at PR
+  time.
+- **R-3F.2** degenerate-camera cull — no edge case leaks
+  because `FRectangle::intersects(empty)` returns false by
+  construction (verified in AYMath's own tests; lock in case
+  any future override breaks that).
+- **R-3F.3 + R-3F.5** cull order — AABB pre-cull saves the
+  most entries (off-screen sprites are typical in editor /
+  map scenarios), and layer-mask cull is branch-predictable.
+  We do NOT sort-then-cull (would waste sort budget on
+  culled entries).
+- **R-3F.4** ±0.5 default — documented at the function; future
+  bounds-aware PR can swap the AABB derivation without
+  breaking the call site.
+- **R-3F.6** `stable_sort` not `sort` — F-2 lock; the test
+  case 7 enforces this with three sprites at the same
+  `packedSortKey`.
+- **R-3F.7** pure carrier — no projection math in the helper.
+  Tests assert the worldMatrix byte-identity (test 4 uses an
+  off-identity matrix and reads back the same byte pattern).
 
 ---
 
