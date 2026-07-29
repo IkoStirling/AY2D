@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 3B — in-AY2D animation + sprite wiring (cross-module PRs still deferred).  
-> **Version**: v0.1.5 (2026-07-29).  
+> **Status**: Phase 3C — in-AY2D counter wiring (counters incremented on real mutation paths; cross-module PRs still deferred).  
+> **Version**: v0.1.6 (2026-07-29).  
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -1067,3 +1067,146 @@ When this file is updated, append a new section here:
   cross-module PR.
 - Phase 4 streaming chunk sources (`Distance` / `TimeWindow` eviction
   policies), Phase 5 `ITileCollisionQuery` impl + 2D backend pick.
+
+---
+
+## 14. Phase 3C counter wiring (planned)
+
+> Drafted before code; design-first per `ay-dev-rules`. Phase 3C
+> extends `Ay2DCounters` with **tile-dimension** metrics that are
+> in-AY2D scope (no cross-module PR needed) and wires them onto
+> the existing real-impl mutation paths. The Phase 3A counters
+> shipped as a struct-only API; Phase 3C is the **first** commit
+> that drives them from real mutation paths and asserts deltas in
+> unit tests (no longer mock data).
+
+### 14.1 New counters (in-AY2D scope)
+
+| Counter | Type | Unit | Storage | Owner | Read by |
+|---|---|---|---|---|---|
+| `ay2d_tiles_mutated` | `std::atomic<uint64_t>` | count | cumulative | per `Tilemap` (new field) | per-tilemap telemetry / Tests |
+| `ay2d_tiles_resident` | `std::atomic<uint64_t>` | count | gauge | per `Tilemap` (new field) | per-tilemap telemetry / Tests |
+| `ay2d_tilemaps_in_world` | `std::atomic<uint32_t>` | count | gauge | per `World2D` (reuse `counters`) | per-world telemetry / Tests |
+
+**Why these three (not draw2d / atlas_bytes / etc.)**:
+- `draw2d_items` / `draw2d_pass_us` are per-frame gauges that
+  require the `RenderSystem2D` cross-module PR (gated per
+  design.md §4.2.1). Phase 3C must not pre-bump them from
+  `World2D::addTilemap` — that would be a counting-error waiting
+  to happen.
+- `atlas_bytes` is an L3 gauge that requires the
+  `RenderResourceManager` cross-module PR. Same reason.
+- `chunk_io_*` already live on `InMemoryTilemapChunkSource`
+  (Phase 3A real-wired); P3C adds tests that prove the real
+  deltas with the new API, not duplicate the wiring.
+
+### 14.2 Wiring contract
+
+| Mutation | Counter delta |
+|---|---|
+| `Tilemap::setTile(cell, tileId)` actual write path (out-of-range dropped, no-op) | **no delta** (only successful writes count) |
+| `Tilemap::setTile` first-write lazy-fill | `tiles_resident += (expected − previous)` then `tiles_mutated += 1` |
+| `Tilemap::resizeGrid(newCols, newRows, newMode)` | `tiles_resident = 0` (clears), `tiles_mutated += 1` |
+| `Tilemap::loadChunkFromSource` → success path | `tiles_resident = newCount`, `tiles_mutated += 1` |
+| `Tilemap::loadChunkFromSource` → null source / width mismatch / handle invalid | **no delta** (mutation gated on success) |
+| `Tilemap::clear()` | `tiles_resident = 0`, `tiles_mutated += 1` |
+| `World2D::addTilemap(layer, sortingKey)` | `tilemaps_in_world += 1`, `resourceEpoch += 1` (existing §3.4 lock) |
+| `World2D::removeTilemap(handle)` matching | `tilemaps_in_world −= 1` (saturating at 0), `resourceEpoch += 1` |
+| `World2D::swapTilemap(...)` matching | `resourceEpoch += 1` (no count delta — swap is in-place) |
+| `World2D::swapTilemap(...)` not matching | **no delta** |
+
+**No-allocation rule**: counter increments use
+`fetch_add(..., std::memory_order_relaxed)` against an
+`std::atomic<uint64_t>` field. No locks, no critical sections.
+
+### 14.3 Tests
+
+`unittest/Test_CountersWired.cpp` — 6–8 cases (no mock data):
+
+1. `TilemapSetTileBumpsTilesMutated` — first write bumps by 1;
+   second write at a different cell bumps by 1; out-of-range
+   writes do not bump.
+2. `TilemapSetTileFirstWriteBumpsResident` — first write to a
+   4×4 grid bumps `tiles_resident` to 16 (expected capacity);
+   confirm via `counters().snapshot()`.
+3. `TilemapResizeGridResetsResident` — set tiles, resize,
+   `tiles_resident == 0`.
+4. `TilemapLoadChunkFromSourceSuccessBumpsBoth` —
+   `loadChunkFromSource(t, source, coord)` with a pre-populated
+   source → `tiles_resident == cols*rows`, `tiles_mutated += 1`.
+5. `TilemapLoadChunkFromSourceFailureNoDelta` — null source,
+   width mismatch, invalid handle each leave both counters
+   unchanged from a recorded baseline.
+6. `World2DAddTilemapBumpsInWorld` — `addTilemap` bumps
+   `tilemaps_in_world` by 1 per call (3 calls → 3).
+7. `World2DRemoveTilemapDecrementsInWorld` — add then remove
+   leaves `tilemaps_in_world == 0` (saturating); remove of an
+   invalid handle is a no-op.
+8. `ChunkSourceRequestLatencyAccumulatesIoUs` — pre-populate
+   a non-resident chunk via `requestChunk` → manually `put`;
+   `chunk_io_us` increments by a non-zero delta (proves the
+   Phase 3A request-time stamp lands in the counter).
+
+**All assertions use real `counters().snapshot()` comparisons** —
+no manual `fetch_add` testing stand-ins. The Phase 3A
+`Test_Counters` cases (mock path) remain in place; Phase 3C
+adds `Test_CountersWired` on top.
+
+### 14.4 Out of scope (deferred)
+
+- `draw2d_items` / `draw2d_pass_us` / `atlas_bytes` real wiring —
+  gated on `RenderSystem2D` + `RenderResourceManager` cross-module
+  PRs (§4.2.1).
+- `chunk_io_us` histogram / p99 — Phase 4 (F-7 perf budget gate).
+- Per-frame `resetPerFrame` automation — uses the existing
+  Phase 3A helper manually; RenderSystem2D wiring is the cross-module
+  PR mentioned above.
+
+### 14.5 Risks / invariants
+
+- **R-3C.1**: counter saturation. `tilemaps_in_world` decrement
+  floors at 0 (no underflow on `fetch_sub` of zero). Use
+  `fetch_sub(1)` followed by compare-and-set, or simply guarantee
+  decrement count matches add count at the test level.
+- **R-3C.2**: counter consistency under relocations.
+  `std::atomic<uint64_t>` increments are independent of tile-data
+  vector relocations; the counter lifetime is bound to `Tilemap` /
+  `World2D` instance, not the underlying storage.
+- **R-3C.3**: no double-counting. Out-of-range `setTile` returns
+  without bumping; a failed `loadChunkFromSource` returns without
+  bumping; `setTile` first-write lazy-fill bumps `tiles_resident`
+  by `expected` (not by 1) on the FIRST write only — subsequent
+  writes at already-allocated cells bump `tiles_mutated` by 1
+  each, not `tiles_resident`.
+- **R-3C.4**: `Ay2DCounters` field expansion. Adding three fields
+  is binary-compatible at the C++ struct level because the new
+  fields are appended (the struct has no virtual methods, and
+  callers use `snapshot()` to read). Existing Phase 3A tests
+  (which check default-zero / `resetAll` / `resetPerFrame`) remain
+  valid against the expanded struct — the new fields are zero
+  by default like the existing six.
+- **R-3C.5**: bgfx-leak guard stays green. New code adds no new
+  headers — only modifies existing ones, and the modifications
+  are limited to inline arithmetic on existing fields.
+
+---
+
+### 13.8 v0.1.6 — 2026-07-29 (Phase 3C counter wiring — in-AY2D)
+
+**Phase**: 3C (in-AY2D scope only — counter real-wiring, no cross-module PRs)
+
+**Locked changes**:
+- §10.1.1 + §14: `Ay2DCounters` gains three tile-dimension fields
+  (vs the six already-shipped chunk / draw gauges). They are
+  in-AY2D scope and have unambiguous semantics (see §14.1 table).
+- §10.1.1 + §14.2: wiring contract locked. Mutation paths
+  enumerated with no-double-counting and no-allocation invariants.
+  Out-of-range / failure paths produce **no delta**.
+- §14.3: `Test_CountersWired` real-wired tests added (6–8 cases).
+  Phase 3A `Test_Counters` mock-paths remain in place; P3C adds
+  the **real** delta assertions on top.
+- §13.8: This changelog entry. Front-matter bumped to v0.1.6.
+
+**Open follow-ups** (unchanged from §13.7): same five follow-ups
+—.aytilemap / Forward2DOpaque / AYSpriteComponent /
+TilemapParallaxDemo / Test_HotReload + Phase 4 / Phase 5.

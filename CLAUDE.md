@@ -1,19 +1,20 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.5, 2026-07-29，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.7）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.6, 2026-07-29，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.8 + Phase 3C counter wiring §14）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — Phase 3B in-AY2D animation + sprite wiring (2026-07-29)
+## 当前状态 — Phase 3C in-AY2D counter wiring (2026-07-29)
 
-- `design.md` 是权威设计（v0.1.5 + audit F-1..F-19 + Changelog §13.1..§13.7）。代码与 design.md 不一致时，design.md 优先。
+- `design.md` 是权威设计（v0.1.6 + audit F-1..F-19 + Changelog §13.1..§13.8 + §14 Phase 3C wiring contract）。代码与 design.md 不一致时，design.md 优先。
 - 子模块已被 root 仓库注册：`option(AY_ENABLE_AY2D ... OFF)` + conditional `add_subdirectory(AYRuntime/AY2D)` (默认 OFF)。
-- 子模块 HEAD = Phase 3B in-AY2D：4 个 .cpp（新增 `AYTilemapAnimation.cpp`）+ 12 个公共头（新增 `AYTileAnimation.h`；`AYSprite.h` 升级为 real impl）。
-- `unittest/` 现在有 12 个 test 文件，链接 AYTest + AYMath 跑通 12 个 TEST_SUITE / 88 TEST_CASE / 288 CHECK assertions。
-- `Tilemap` 新增 `animationTable`（per-tile `(tileId -> [frameTileId, durationMs]*)` 表）+ `animationState`（per-tile frame index + 整数 ms remainder accumulator）+ `lastTickUs` + `hasBeenTicked` 字段；`tickTilemapAnimation(Tilemap&, int64_t nowUs)` 是 `src/AYTilemapAnimation.cpp` 里的 free function（ECS System wrapper @ priority 460 等 AYEntity 跨模块 PR）。
-- `Sprite` real impl：`Float3x3 worldMatrix` + `sourceRect` (4 UV) + `color` (4 RGBA) + `SpriteFlip` 2-bit enum + `layer` + `sortingKey` + `packedSortKey()`（mirrors `World2D::packSortKey`）。
-- **R-10 lock 守住**：AY2D 没有 AYAnimation include / link；动画表是 AY2D 自管 + AYTime-free（integer-us raw + consumers wrap `Clock::gameNow()`）。
-- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`AYMath` 是 Phase 3A 起 PUBLIC link 依赖（Float3x3 / Float4x4 矩阵）。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（新 header 只 include `<cstdint>`/`<vector>`/`aymath/MathTypes.h`）。
+- 子模块 HEAD = Phase 3C in-AY2D counter wiring：`Ay2DCounters` 扩展三个 tile-dimension 字段（`tiles_mutated` / `tiles_resident` / `tilemaps_in_world`），并在 `Tilemap::setTile/resizeGrid/clear/loadChunkFromSource` + `World2D::addTilemap/removeTilemap/swapTilemap` 真 wired mutation path 上落地（Phase 3A ships struct；Phase 3C 真上数）。
+- `unittest/` 现在有 13 个 test 文件，链接 AYTest + AYMath 跑通 13 个 TEST_SUITE / ≥96 TEST_CASE / ≥~312 CHECK assertions（Phase 3B 88 → Phase 3C 96 +8；Phase 3A mock 测试保留，新增 `Test_CountersWired` 走真 wired delta）。
+- `Tilemap` 新增 `Ay2DCounters counters` 字段；mutation 行为锁：成功路径 bump `tiles_mutated`，first-write lazy-fill bump `tiles_resident` 到 expected slot count（一次性），out-of-range / 失败 / matched swap / unmatched remove 全是 no-op（§14.2 no-double-counting 锁）。
+- `World2D::addTilemap` bump `tilemaps_in_world`；`removeTilemap` match 减 1（saturating at 0，R-3C.1）；`swapTilemap` in-place 只 bump epoch（不变 count）。
+- `InMemoryTilemapChunkSource` 的 counter 字段已经在 Phase 3A 真 wired；P3C 的 `ChunkSourceRequestThenPutAccumulatesIoUs` 测试用真 delta 断言（不再 mock 数据）。
+- **R-10 lock 守住**：AY2D 没有 AYAnimation include / link；动画表是 AY2D 自管 + AYTime-free。
+- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`AYMath` 是 Phase 3A 起 PUBLIC link 依赖。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（`Ay2DCounters.h` / `Tilemap.h` / `World2D.h` 仍未引入 bgfx）。
 - 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity / AYShader maintainer 拥有各自的 merge gate。
 
 ## 重要规则
