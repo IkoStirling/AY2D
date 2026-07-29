@@ -12,6 +12,8 @@
 #include "AYChunkRequestHandle.h"
 #include "AYOrthographicCamera.h"
 #include "AYSprite.h"
+#include "AYWorldAabb.h"
+#include "AYSpriteDrawCmd.h"
 #include "AYTileAnimation.h"
 #include "AYTileCoord.h"
 #include "AYTileLoadState.h"

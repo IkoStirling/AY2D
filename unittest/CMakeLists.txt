@@ -68,6 +68,13 @@ add_executable(${TEST_TARGET}
     # no cross-module deps, no bgfx. No new AYMath module link
     # needed — AYMath is already linked for AYOrthographicCamera.
     Test_TileMath.cpp
+    # Phase 3F in-AY2D tests - sprite scene AABB cull + stable
+    # sort + emit. design.md §13.11 / §17. The helper is a pure
+    # data-carrier builder; the future RenderSystem2D cross-
+    # module PR to AYRenderer (§4.2.1) translates SpriteDrawCmd
+    # into DrawItem::payload. No new AYMath / AYRenderer
+    # dependency - AYMath is already linked.
+    Test_SpriteCulling.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

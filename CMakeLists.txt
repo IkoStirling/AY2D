@@ -39,6 +39,7 @@ set(SRC_FILES
     src/AYWorld2D.cpp                    # addTilemap / removeTilemap / swapTilemap + resourceEpoch
     src/AYTilemapAnimation.cpp           # Phase 3B: tick + resolveAnimatedTileId
     src/AYTilemapBatch.cpp               # Phase 3D: setTileRange / fillTile / copyTileRange + gridRect
+    src/AYSpriteCulling.cpp               # Phase 3F: buildSpriteScene (AABB + layer + stable_sort)
 )
 
 # Phase 2 is the first time the library type flips to STATIC. The
