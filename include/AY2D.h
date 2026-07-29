@@ -7,6 +7,7 @@
 // AYPhysics sibling umbrella pattern (AYRuntime/AYPhysics/AYPhysics.h
 // + CLAUDE.md "新增模块要求").
 
+#include "AY2DCounters.h"
 #include "AYAtlasDesc.h"
 #include "AYChunkData.h"
 #include "AYChunkRequestHandle.h"

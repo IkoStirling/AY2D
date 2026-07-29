@@ -14,6 +14,7 @@
 #include "AYInMemoryTilemapChunkSource.h"
 
 #include <algorithm>
+#include <chrono>
 #include <utility>
 
 namespace ayt::ay2d {
@@ -31,9 +32,18 @@ void InMemoryTilemapChunkSource::touch(MapKey key) noexcept {
 }
 
 void InMemoryTilemapChunkSource::putBack(ChunkCoord coord, ChunkData&& data) noexcept {
+    // Phase 3 telemetry: read the byte count from `data` BEFORE the
+    // move into the cache (post-move, `data` is in a moved-from state
+    // and accessing its members is undefined behavior).
+    const uint64_t bytes = (data.mode == TileIdPackMode::Narrow16)
+        ? data.tileIds16.size() * sizeof(uint16_t)
+        : data.tileIds32.size() * sizeof(uint32_t);
     _cache.emplace_back(coord, std::move(data));
     const MapKey key = packKey(coord);
     _index[key] = std::prev(_cache.end());
+    _counters.chunk_io_bytes.fetch_add(bytes, std::memory_order_relaxed);
+    _counters.chunk_resident_count.store(
+        static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
 }
 
 void InMemoryTilemapChunkSource::eraseByKey(MapKey key) noexcept {
@@ -41,6 +51,8 @@ void InMemoryTilemapChunkSource::eraseByKey(MapKey key) noexcept {
     if (it == _index.end()) return;
     _cache.erase(it->second);
     _index.erase(it);
+    _counters.chunk_resident_count.store(
+        static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
 }
 
 bool InMemoryTilemapChunkSource::contains(MapKey key) const noexcept {
@@ -66,9 +78,32 @@ bool InMemoryTilemapChunkSource::put(ChunkCoord coord, ChunkData data) noexcept 
     // bookkeeping to keep request handles even when the source has
     // just delivered the chunk; clear matching entries so a future
     // `cancelChunk` is a clean no-op.
+    //
+    // Phase 3: the loop compares the packed (coord) key, not the
+    // generation portion of the handle. Multiple outstanding
+    // requests for the same coord share the same (coord) key, so
+    // all of them get cleared at put() time (the matching has
+    // already happened and the consumer is expected to consult
+    // tryGetChunk next).
+    //
+    // Phase 3 telemetry: when a pending entry is matched, compute
+    // the request → put latency and accumulate into
+    // `chunk_io_us`. The latency is the wall-clock interval the
+    // consumer waited for the chunk (lower is better; the budget
+    // is 16 ms p99 per design.md §10.1).
     for (auto it = _pending.begin(); it != _pending.end(); ) {
-        if (packKey(it->second) == key) it = _pending.erase(it);
-        else                              ++it;
+        if (packKey(it->second.coord) == key) {
+            const uint64_t nowUs = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count());
+            if (it->second.requestTimeUs != 0 && nowUs > it->second.requestTimeUs) {
+                _counters.chunk_io_us.fetch_add(
+                    nowUs - it->second.requestTimeUs, std::memory_order_relaxed);
+            }
+            it = _pending.erase(it);
+        } else {
+            ++it;
+        }
     }
     return true;
 }
@@ -81,6 +116,11 @@ void InMemoryTilemapChunkSource::evictIfNeeded() noexcept {
         _cache.erase(_cache.begin());
         _index.erase(key);
     }
+    // Phase 3 telemetry: refresh the resident count after eviction
+    // so a post-put() snapshot reflects the cached state, not the
+    // pre-eviction state.
+    _counters.chunk_resident_count.store(
+        static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
 }
 
 ChunkRequestHandle InMemoryTilemapChunkSource::requestChunk(ChunkCoord coord) noexcept {
@@ -89,15 +129,36 @@ ChunkRequestHandle InMemoryTilemapChunkSource::requestChunk(ChunkCoord coord) no
     // Already resident — synthesise a handle and touch it to MRU.
     if (contains(key)) {
         touch(key);
-        return ChunkRequestHandle{++_nextRequestId};
+        // Phase 3: the (index, generation) constructor composes
+        // the id. The generation stays at `_nextRequestGen` so a
+        // subsequent outstanding handle survives the touch.
+        return ChunkRequestHandle{++_nextRequestIndex, _nextRequestGen};
     }
 
-    // Reserve a request id; the caller may later cancel, or the
-    // matching put() lands and the next tryGetChunk delivers the
-    // payload.
-    const uint32_t id = ++_nextRequestId;
-    _pending.emplace(id, coord);
-    return ChunkRequestHandle{id};
+    // Reserve the next (index, generation). When the index wraps
+    // past ChunkRequestHandle::kMaxIndex, bump the generation and
+    // restart the index from 1. The wrap is the basic ABA guard:
+    // outstanding handles whose index collided across generations
+    // fail the equality check on generation.
+    if (_nextRequestIndex > ChunkRequestHandle::kMaxIndex) {
+        _nextRequestIndex = 1;
+        ++_nextRequestGen;
+        // Generation also wraps (8 bits). Wraparound is documented
+        // as "extremely unlikely" — index + generation jointly
+        // support 16 M × 256 ≈ 4.3 billion unique ids before wrap,
+        // which the per-resource LRU never reaches.
+    }
+    const uint32_t idx = ++_nextRequestIndex;
+    const uint32_t gen = _nextRequestGen;
+    const uint32_t id  = ChunkRequestHandle::pack(idx, gen);
+
+    // Phase 3 telemetry: stamp the request time so put() can
+    // compute the request → delivery latency into chunk_io_us.
+    const uint64_t nowUs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    _pending.emplace(id, PendingEntry{coord, nowUs});
+    return ChunkRequestHandle{idx, gen};
 }
 
 bool InMemoryTilemapChunkSource::tryGetChunk(ChunkCoord coord, ChunkData& out) noexcept {
@@ -119,6 +180,11 @@ bool InMemoryTilemapChunkSource::isResident(ChunkCoord coord) const noexcept {
 
 void InMemoryTilemapChunkSource::cancelChunk(ChunkRequestHandle handle) noexcept {
     if (!handle.isValid()) return;
+    // Phase 3: erase by the full 32-bit id (index + generation
+    // packed). The generation portion of the key ensures a stale
+    // handle (e.g. an old chunk request that was already matched
+    // and bumped) does not accidentally erase a fresh handle's
+    // pending entry.
     _pending.erase(handle.id());
 }
 

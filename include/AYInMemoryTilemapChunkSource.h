@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "AY2DCounters.h"
 #include "AYChunkData.h"
 #include "AYChunkRequestHandle.h"
 #include "AYTileCoord.h"
@@ -83,15 +84,39 @@ public:
     [[nodiscard]] LRUList::iterator find(MapKey key) noexcept;
     [[nodiscard]] bool empty() const noexcept { return _cache.empty(); }
 
+    // Telemetry view (design.md §10.1.1). The chunk source writes
+    // its slice of the counters here; consumers (the owning
+    // World2D) may merge into their own counters via copy. The
+    // source keeps its own counters because the chunk source
+    // lifetime is independent of the world's per-frame reset.
+    [[nodiscard]] const Ay2DCounters& counters() const noexcept { return _counters; }
+    [[nodiscard]]       Ay2DCounters& counters()       noexcept { return _counters; }
+
 private:
     uint32_t  _capacity = 0;
-    uint32_t  _nextRequestId = 1;  // 0 = invalid (kInvalidId); start at 1
+    // Phase 3: chunk request ids split into 24-bit index + 8-bit
+    // generation. `_nextRequestIndex` is the monotonic counter; the
+    // generation is bumped every time the index wraps (max 16 M
+    // outstanding requests -> generation wraps around 256 retries).
+    uint32_t  _nextRequestIndex   = 1;  // 0 = invalid (kInvalidId)
+    uint32_t  _nextRequestGen     = 1;  // gen 0 reserved for invalid
     LRUList   _cache;
     std::unordered_map<MapKey, LRUList::iterator> _index;
 
-    // Pending requests: handle id -> coord. Filled in requestChunk;
-    // drained when the matching put() lands OR when cancelChunk fires.
-    std::unordered_map<uint32_t, ChunkCoord> _pending;
+    // Phase 3 telemetry. The source's slice of the world counters.
+    // See `counters()` accessor.
+    Ay2DCounters _counters;
+
+    // Pending requests: handle id -> (coord, request_time_us).
+    // Filled in requestChunk; drained when the matching put() lands
+    // OR when cancelChunk fires. Keyed by the full 32-bit id (so
+    // ABA attempts see a 32-bit mismatch even when the index
+    // portion collides).
+    struct PendingEntry {
+        ChunkCoord coord;
+        uint64_t   requestTimeUs = 0;
+    };
+    std::unordered_map<uint32_t, PendingEntry> _pending;
 
     void evictIfNeeded() noexcept;
 };

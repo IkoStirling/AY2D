@@ -1,16 +1,17 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1, 2026-07-27，含工业级审核 patch F-1..F-19）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.4, 2026-07-29，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.6）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — Phase 2 finite-tilemap CPU MVP (2026-07-29)
+## 当前状态 — Phase 3 in-AY2D real impl promotions (2026-07-29)
 
-- `design.md` 是权威设计（v0.1 + audit F-1..F-19 + Changelog §13.1..§13.5）。代码与 design.md 不一致时，design.md 优先。
+- `design.md` 是权威设计（v0.1.4 + audit F-1..F-19 + Changelog §13.1..§13.6）。代码与 design.md 不一致时，design.md 优先。
 - 子模块已被 root 仓库注册：`option(AY_ENABLE_AY2D ... OFF)` + conditional `add_subdirectory(AYRuntime/AY2D)` (默认 OFF)。
-- 子模块 HEAD = Phase 2 CPU MVP：两个 .cpp（`AYTilemap.cpp` + `AYInMemoryTilemapChunkSource.cpp`） + 5 个新公共头（`AYChunkRequestHandle.h` / `AYChunkData.h` / `AYTileCoord.h` / `AYAtlasDesc.h` / `AYTileLoadState.h` / `AYTilemapChunkSource.h` / `AYInMemoryTilemapChunkSource.h` / `AYTileSamplerUV.h`）。
-- `unittest/` 已经有 6 个 stub/functional test 文件，链接 AYTest 跑通 6 个 TEST_SUITE / 30+ TEST_CASE。
-- `add_library(AY2D STATIC ${SRC_FILES})` 取代之前的 INTERFACE — 是 Phase 2 的可见起点（design.md §13.5）。
+- 子模块 HEAD = Phase 3 in-AY2D real impl：3 个 .cpp（`AYTilemap.cpp` + `AYInMemoryTilemapChunkSource.cpp` + `AYWorld2D.cpp`） + 11 个公共头（`AY2DCounters.h` 是新的） + ChunkRequestHandle 升级成 24+8 packed id with generation。
+- `unittest/` 现在有 10 个 test 文件，链接 AYTest + AYMath 跑通 10 个 TEST_SUITE / 60+ TEST_CASE。
+- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`AYMath` 是新增的 PUBLIC link 依赖（仅 OrthographicCamera 的 Float4x4 矩阵）。
 - `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过。
+- 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity maintainer 拥有各自的 merge gate。
 
 ## 重要规则
 

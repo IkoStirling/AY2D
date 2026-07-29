@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 0 — docs-only (no code merged yet).  
-> **Version**: v0.1 (2026-07-27).  
+> **Status**: Phase 3 — in-AY2D real impl promotions (cross-module PRs still deferred).  
+> **Version**: v0.1.4 (2026-07-29).  
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -900,6 +900,83 @@ When this file is updated, append a new section here:
     states / cancel-no-op / unknown-chunk returns false.
   Existing stubs (`Test_TileCoord` / `Test_CollisionFlags` /
   `Test_TileIdPackMode`) untouched.
+
+**Open follow-ups**:
+- `.aytilemap` binary format + IAYTilemap cross-module PR (still
+  gated on AYResource maintainer per §4.2.1).
+- `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload` cross-module
+  PRs to AYRenderer.
+- `AYTileMapComponent` ECS component cross-module PR to AYEntity.
+- `TilemapParallaxDemo` (the noop-visual MVP that proves the chain).
+- `Test_HotReload_Tilemap` (F-11 / F-17) waits on the `.aytilemap`
+  cross-module PR.
+- Phase 3 animation bake, Phase 4 streaming chunk sources, Phase 5
+  ITileCollisionQuery impl.
+
+### 13.6 v0.1.4 — 2026-07-29 (Phase 3 in-AY2D real impl promotions)
+
+**Phase**: 3 (in-AY2D scope only — no cross-module PRs)
+**Locked changes**:
+- §3 + §3.4: `World2D` placeholder is promoted to a real impl
+  (`src/AYWorld2D.cpp`, full `addTilemap` / `removeTilemap` /
+  `swapTilemap` / `find` API). `TilemapHandle` carries a
+  `(uint32_t id, uint32_t generation)` pair for basic ABA safety.
+  Each mutation bumps `resourceEpoch` exactly once. The registry
+  is a small vector-of-`Entry` (Phase 3 caps the registry at a
+  few hundred entries); Phase 4 streaming replaces this with a
+  hash map. The `IAYTilemap*` resource pointer is a non-owning
+  raw pointer placeholder; the cross-module PR replaces it with
+  `TilemapResourceHandle` (Phase 3+).
+- §3 + §5.3: `OrthographicCamera` placeholder is promoted to a
+  real impl with `viewMatrix()` / `projectionMatrix()` /
+  `isPixelPerfectSafe()` math. The matrices are
+  `ayt::math::Float4x4` from `AYMath`. The four §5.3 pixel-perfect
+  invariants are codified in `isPixelPerfectSafe()` (single source
+  of truth — RenderSystem2D and Editor viewport both query this).
+  AY2D now links `AYMath` (the only new allowed dependency; §2.3
+  already admitted AYMath).
+- §6.2: `ChunkRequestHandle` packs 24-bit index + 8-bit
+  generation into a single uint32_t. The
+  `(uint32_t index, uint32_t generation)` constructor is the
+  source's only entry point; the equality check compares both
+  fields (the basic ABA guard). Generation bumps on overflow
+  past `kMaxIndex = 0x00FFFFFF`. The underlying id layout is
+  unchanged on the wire (still a single uint32_t) so the
+  `cancelChunk` / `tryGetChunk` API surface is preserved.
+- §10.1.1: `Ay2DCounters` POD lands as `include/AY2DCounters.h`.
+  Six atomic fields (`chunk_io_us` / `chunk_io_bytes` /
+  `chunk_resident_count` / `atlas_bytes` / `draw2d_items` /
+  `draw2d_pass_us`) with `snapshot()` / `resetAll()` /
+  `resetPerFrame()` helpers. `World2D` and
+  `InMemoryTilemapChunkSource` each carry their own counters
+  instance (mirrors the `AYPhysicsManager` pattern). The chunk
+  source's `put` path now accumulates `chunk_io_bytes` and
+  updates `chunk_resident_count` on every insert/erase; the
+  request → delivery latency is stamped into
+  `pending.requestTimeUs` and accumulated into `chunk_io_us`
+  at the matching `put()` time.
+- §10.2: Four new unit-test sub-suites added.
+  - `Test_World2D` — 9 cases: fresh epoch / add bumps / remove
+    bumps / swap bumps / remove invalidates handle / add-remove-
+    add gives different generation / packSortKey bits / invalid
+    handle is no-op / multiple tilemaps and find.
+  - `Test_OrthographicCamera` — 11 cases: identity view / zoom
+    scale / position translate / projection aspect ratio /
+    degenerate viewport / pixel-perfect safe / unsafe with
+    fractional zoom / unsafe with fractional position / unsafe
+    with non-zero gutter / default layerMask / projection matrix
+    after scale.
+  - `Test_ChunkRequestHandle` — 9 cases: default invalid /
+    hand-constructed valid / pack index isolation / pack
+    generation isolation / index mask clip / generation mask
+    clip / equality requires both / `kInvalidId` /
+    `kMaxIndex` / pack-unpack round-trip.
+  - `Test_Counters` — 6 cases: defaults zero / `resetAll()` /
+    `resetPerFrame()` / chunk-source `put` populates bytes +
+    resident count / chunk-source eviction / accessor identity.
+  Existing tests (Phase 2 + Phase 1+ stubs) untouched.
+- §13.6: This changelog entry.
+- `AY2D.h` umbrella now also includes `AY2DCounters.h`.
 
 **Open follow-ups**:
 - `.aytilemap` binary format + IAYTilemap cross-module PR (still

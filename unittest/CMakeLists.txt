@@ -41,14 +41,23 @@ add_executable(${TEST_TARGET}
     Test_Tilemap.cpp
     Test_TileSamplerUV.cpp
     Test_InMemoryTilemapChunkSource.cpp
+    # Phase 3 in-AY2D tests — exercise the real-impl promotions
+    # (AYWorld2D, AYCamera, ChunkRequestHandle, Ay2DCounters).
+    Test_World2D.cpp
+    Test_OrthographicCamera.cpp
+    Test_ChunkRequestHandle.cpp
+    Test_Counters.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
     AY2D
     AYTest
-    # No AYMath link required for these Phase 1+ stub tests — the
-    # placeholder headers do not include AYMath. Phase 2 adds AYMath /
-    # AYResource / AYEntity as those subsystems come online.
+    # Phase 3 added AYMath: AYOrthographicCamera now carries
+    # `ayt::math::Float4x4` view/projection matrices (design.md §3).
+    # The library is the dependency; we don't redeclare the type.
+    AYMath
+    # No AYResource / AYEntity link yet — those land with the
+    # cross-module PRs (design.md §4.2.1).
 )
 
 target_include_directories(${TEST_TARGET} PRIVATE
