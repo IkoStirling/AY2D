@@ -178,4 +178,4 @@ else()
         "skipping enable_testing/add_subdirectory for Phase 0.")
 endif()
 
-message(STATUS "AY2D v0.1.19 (P3I.2 World2D::removeTilemap LRU-coherent chunk-source purge) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
+message(STATUS "AY2D v0.1.20 (P3I.3 L-7 four-invariant test coverage + A-2 reshape) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")

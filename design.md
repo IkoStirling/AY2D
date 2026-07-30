@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3I.2 ship (World2D::removeTilemap LRU-coherent chunk-source purge; §13.21 + §18.7 one-source-per-tilemap lock). P3I.1 (blockedTileIds, §13.20) and §13.PF C6 → C6-R1 amendment still in the chain.
-> **Version**: v0.1.19 (2026-07-30).
+> **Status**: P3I.3 ship (L-7 four-invariant test coverage + A-2 reshape; §13.22). P3I.2 (removeTilemap purge, §13.21 + §18.7) and P3I.1 (blockedTileIds, §13.20) and §13.PF C6 → C6-R1 amendment still in the chain.
+> **Version**: v0.1.20 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2939,6 +2939,130 @@ identical).
   §4.2.1.
 - KI-3I-1 (`eraseByKey` not bumping `evictions_lru`)
   remains deferred to Phase 3J.
+
+### 13.22 P3I.3 — L-7 four-invariant test coverage (v0.1.20)
+
+> Phase 3I.3 closes A-2 **reshaped**: rather than adding
+> a new `layerMask` setter/getter API, the slice is
+> **test-only** and tightens the L-7 invariant coverage on
+> `OrthographicCamera::isPixelPerfectSafe()`. Zero surface
+> change. Stays inside the AY2D submodule.
+
+**A-2 reshape rationale** (recorded so the next reader
+sees why this slice did not add a setter/getter):
+
+- The pre-P3I.3 `OrthographicCamera` exposes `layerMask`
+  as a public field (design.md §3.2, `AYOrthographicCamera.h:81`),
+  already round-trippable via direct assignment — there
+  is **no setter/getter API to add** that would change
+  observable behavior. The original A-2 list entry
+> "add layerMask API"
+was a hint at a different concern: **L-7 had three
+  invariant negatives and no positive baseline**, plus no
+  viewport-scale coverage. P3I.3 addresses that with
+  tests, not API.
+- Adding a `setLayerMask(uint32_t)` / `getLayerMask()`
+  pair in `OrthographicCamera` would introduce a
+  redundant accessor for a public field — a strict
+  layer violation against the existing POD-style
+  convention (L-3I-6) and the §3.2 design rule
+  "no getter/setter pairs for public fields".
+
+**L-7 invariant (four-condition AND)** — restated from
+design.md §3.2 for grep-ability:
+
+```
+isPixelPerfectSafe()  ==  true  iff  ALL of:
+  1. position is integer-valued
+  2. zoom is integer-valued
+  3. viewport scale (widthPx / heightPx) is
+     integer-multiple of viewSize
+  4. atlasGutterIsZero == true
+```
+
+**Coverage gap before P3I.3** — the `OrthographicCamera`
+test suite had:
+
+- `PixelPerfectSafeAllInvariantsHold` — implicit positive
+  but no per-invariant assertion (a future drift in any
+  one of the four would not be localised to that
+  invariant's name in the failure log).
+- `PixelPerfectUnsafeWhenZoomFractional` — invariant 2.
+- `PixelPerfectUnsafeWhenPositionFractional` — invariant 1.
+- `PixelPerfectUnsafeWhenGutterNonZero` — invariant 4.
+
+Invariant **3 (viewport scale)** had **no negative case**.
+The positive baseline was implicit and the predicate
+might have silently regressed to a constant (always `true`
+or always `false`) without the existing tests noticing.
+
+**New tests** (4 cases / ~17 CHECK, appended to the
+existing `OrthographicCameraSuite` in
+`Test_OrthographicCamera.cpp`):
+
+1. `L7_PixelPerfectSafe_AllFourInvariantsHold_True` (5
+   CHECK) — explicit positive baseline. Sets the four
+   preconditions, asserts each individually, then asserts
+   the predicate result. The pre-condition assertions
+   make a future regression in any one invariant
+   show up in the test log with that invariant's name.
+2. `L7_PixelPerfectUnsafe_NonIntegerViewportScale` (4
+   CHECK) — fills the invariant-3 gap. Walks
+   `widthPx == 0`, `heightPx == 0`, integer-multiple
+   viewport, recovery to integer-multiple viewport. Each
+   transition is asserted; the round-trip catches
+   "predicate is sticky-false after a failed call" if a
+   future refactor introduces state.
+3. `L7_PixelPerfectUnsafe_HalfTexelOffset_Rejection` (5
+   CHECK) — explicit half-texel walk on both axes plus
+   the both-axes case plus recovery. Distinct from the
+   pre-P3I.3 `PixelPerfectUnsafeWhenPositionFractional`
+   in that the recovery path is asserted.
+4. `L7_LayerMaskRoundTripsThroughAssignment` (3 CHECK) —
+   orthogonality lock. `layerMask` write/read is
+   independent of `isPixelPerfectSafe()`; this case
+   documents the round-trip and asserts the predicate
+   stays `true` under arbitrary `layerMask` values. This
+   is the A-2 reshape evidence — a setter/getter API
+   would not add observable value beyond what this case
+   already locks.
+
+Total tests: **27 TEST_SUITE / 933 CHECK assertions
+PASS** (was 26 / 903 at v0.1.19; +0 suites, +30 CHECK;
+3× consecutive green locked; bgfx-leak guard green).
+
+**L-3I-6 (POD-style) lock** — `OrthographicCamera`
+remains POD-with-public-fields. The four new cases use
+direct field assignment; no accessor is added. This
+matches the §3.2 convention and keeps the layer surface
+flat for the cross-module consumer (a future
+`RenderSystem2D` consumer reads `layerMask` directly).
+
+**Files modified**:
+
+- `unittest/Test_OrthographicCamera.cpp` (+142 lines:
+  4 new `TEST_CASE` blocks appended after
+  `LayerMaskDefaultIsAllOnes`; no other change in the
+  file).
+
+**Files NOT touched**: `include/AYOrthographicCamera.h`,
+`src/AYOrthographicCamera.cpp` (none), `CMakeLists.txt`
+(test file already registered), `design.md §3.2`
+(predicate body unchanged), root `CMakeLists.txt` /
+`.gitmodules` (root-bump commit).
+
+**Open follow-ups** (after P3I.3):
+
+- Phase 5 follow-ups still open (cross-module PR
+  territory): see §13.20 — unchanged.
+- P3I.4 (`World2DSnapshot::diff`) is the last in-AY2D
+  slice for Phase 3I; ships next.
+- Cross-module PRs (CM-1..CM-5) still deferred per
+  §4.2.1.
+- KI-3I-1 (`eraseByKey` not bumping `evictions_lru`)
+  remains deferred to Phase 3J.
+- A-2 (the original "add layerMask API" entry) is now
+  **closed-by-reshape**; no follow-up.
 
 ---
 
