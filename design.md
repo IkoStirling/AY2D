@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3G.1 partial ship (counter scaffolding for Distance / TimeWindow + evictions_lru cumulative + non-LRU log warning; §13.16). Phase 5 + P3H.2 + P3G.2a + §13.PF pre-flight all landed in this commit chain.
-> **Version**: v0.1.14 (2026-07-30).
+> **Status**: P3D.2 ship (Tilemap::aabbOfCell centered on cellToWorld per R-3E.5; §13.17). Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + §13.PF pre-flight all landed in this commit chain.
+> **Version**: v0.1.15 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2438,6 +2438,65 @@ All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
   bumps `evictions_distance` / `evictions_time_window` per
   eviction. The counter scaffolding + log warning stay in
   place; the policies activate against the existing field.
+
+---
+
+### 13.17 v0.1.15 — 2026-07-30 (P3D.2 aabbOfCell — in-AY2D)
+
+**Phase**: P3D.2 (in-AY2D scope only — pure-math composite API;
+no cross-module PR; uses existing P3E `cellToWorld` helper).
+
+**Locked changes**:
+
+- §16.3: `Tilemap::aabbOfCell(TileCoord)` returns
+  `ayt::math::FRectangle`. Centered on `cellToWorld(c)` (R-3E.5
+  cell-center) via `FRectangle::fromCenterExtent(center,
+  full-extent)`. The naive corner-port
+  `min = cellToWorld(c); max = cellToWorld(c+{1,1})` would be
+  OFF BY HALF A CELL because `cellToWorld` returns the cell
+  center, not the corner — the centered composition via
+  `fromCenterExtent` is the correct form.
+- §16.3: the impl lives in `src/AYTilemap.cpp` (out-of-line)
+  so future SIMD / bulk variants can grow without header
+  churn. `cellOrigin` is hard-coded to `{0, 0}` to match the
+  P3E world-coord `setTile` / `getTile` overloads; a future
+  cross-module PR lifts this to a member-field-driven origin.
+- §13.PF pitfall (new): `FRectangle::fromCenterExtent(center,
+  extent)` MULTIPLIES `extent` BY 0.5 INTERNALLY (see
+  `MathTypes.cpp:2039-2042`). Callers pass FULL dimensions,
+  not half-extent. The first implementation passed
+  `tileWidth * 0.5f, tileHeight * 0.5f` — tests caught the
+  resulting 4x-shrunken AABBs. Locked in §13.17 + this
+  changelog entry + memory.
+
+**Tests** (`unittest/Test_AabbOfCell.cpp` — 3 cases / ~50 CHECK):
+
+1. `AabbOfCellZeroCentered` — aabbOfCell({0,0}) for 16x16
+   tilemap: center (8, 8), full extent (16, 16) →
+   min (0, 0), max (16, 16), width = height = 16.
+2. `AabbOfCellNonZeroMatchesCornerPortMinusHalfCell` —
+   regression for the centered form: aabbOfCell({2,3}) for
+   32x16 tilemap: center (80, 56), full extent (32, 16) →
+   min (64, 48), max (96, 64). `FRectangle::center()`
+   round-trips to (80, 56).
+3. `AabbOfCellWidthHeightMatchTileDimensions` — sweep over
+   8x8 = 64 cell coords verifies width/height always equal
+   tileWidth/tileHeight.
+
+All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
++ Phase 5 + P3H.2 + P3G.2a + P3G.1 partial) untouched.
+
+- §11.2: bgfx-leak guard stays green. No new public headers.
+- §13.17: This changelog entry. Front-matter bumped to v0.1.15.
+  Total tests: **22 TEST_SUITE / 769 CHECK assertions PASS** (was
+  21 / 627 at v0.1.14; +1 suite, +142 CHECK — case 3 sweeps 64
+  cells, each contributing 2 CHECK assertions, hence the jump).
+
+**Open follow-ups** (unchanged from §13.16 + §13.PF):
+
+- Slice 6 (P3H.1): ship `SpriteSheet = AtlasDesc + path`.
+- Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
 
 ---
 

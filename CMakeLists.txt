@@ -178,4 +178,4 @@ else()
         "skipping enable_testing/add_subdirectory for Phase 0.")
 endif()
 
-message(STATUS "AY2D v0.1.14 (P3G.1 partial counter scaffolding + log warning) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
+message(STATUS "AY2D v0.1.15 (P3D.2 aabbOfCell centered on cellToWorld) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")

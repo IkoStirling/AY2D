@@ -1,19 +1,19 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.14, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.16 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.15, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.17 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — P3G.1 partial in-AY2D counter scaffolding + log warning (2026-07-30)
+## 当前状态 — P3D.2 in-AY2D aabbOfCell centered on cellToWorld (2026-07-30)
 
-- `design.md` 是权威设计（v0.1.14 + audit F-1..F-19 + Changelog §13.1..§13.16 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G）。代码与 design.md 不一致时，design.md 优先。
-- 子模块 HEAD = P3G.1 partial：`Ay2DCounters` 加 3 fields（`evictions_distance` + `evictions_time_window` scaffolding always-0 today；`evictions_lru` cumulative bumped by every LRU eviction）；`InMemoryTilemapChunkSource::setBudget` non-LRU 分支 `ayt::log::warn`；CMakeLists PUBLIC-link 加 `AYLog`。
-- `unittest/` 现在有 **21** 个 test 文件 / **627** CHECK assertions PASS（P3G.2a 20/600 → P3G.1 partial 21/627 = +1 suite, +27 CHECK）。新增 `Test_BudgetPolicyCounters` 走真 wired delta（3 case：non-LRU false / scaffolding zero / LRU evictions_lru reset discipline）。3× consecutive green runs locked mid-plan。
-- 锁行为（§18.6 / R-3G.1..7 + §13.PF + §13.15 + §13.16）：**R-3G.1** non-LRU policy = no-op + false + log warning（active lock intact；Distance/TimeWindow 留给 Phase 4 streaming 跨模块 PR，§13.PF clarification）；**R-3G.2** 累计 counter 纪律扩展到 `chunk_io_residency_reject` + `evictions_lru` / `evictions_distance` / `evictions_time_window`（resetAll only，resetPerFrame 不 zero）；**R-3G.3a** `maxIoBytesPerSec == 0` 关闭 rate gate；**R-3G.4** `maxChunksResident` 是 GPU residency 撞 §4.2.1（cross-module PR to RenderResourceManager，Phase 6 仍 defer）。
-- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G / Phase 5 / P3H.2 / P3G.2a 任何已有测试（counter append-only，log warning pure-add，R-3G.1 lock 行为不变）。
+- `design.md` 是权威设计（v0.1.15 + audit F-1..F-19 + Changelog §13.1..§13.17 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G）。代码与 design.md 不一致时，design.md 优先。
+- 子模块 HEAD = P3D.2：`Tilemap::aabbOfCell(TileCoord) -> FRectangle` member 方法，centered on `cellToWorld(c)` per R-3E.5 cell-center convention；`FRectangle::fromCenterExtent(center, full-extent)` composition。
+- `unittest/` 现在有 **22** 个 test 文件 / **769** CHECK assertions PASS（P3G.1 partial 21/627 → P3D.2 22/769 = +1 suite, +142 CHECK — case 3 sweeps 64 cells × 2 CHECK = 128 + 其它 14）。新增 `Test_AabbOfCell` 走真 wired delta（3 case：zero centered / non-zero matches corner-port-minus-half-cell / width-height matches tile dims）。
+- 锁行为（§16.3 + §13.PF + §13.17）：R-3E.5 cell-center convention 持续生效；`fromCenterExtent` pitfall documented（extent 参数内部 × 0.5，callers 传 full dimensions）。§13.PF C6 `flagsAtRaw` Empty fix 持续生效；§13.PF C8 TileCoord deviation 持续生效；R-3G.1 active lock 持续生效。
+- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G / Phase 5 / P3H.2 / P3G.2a / P3G.1 partial 任何已有测试。
 - **R-10 lock 守住**：AY2D 没有 AYAnimation include / link。
-- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath AYLog)` 持续生效（AYLog 是 §2.3 allowed dep，AYResource + AYScript 已 link AYLog for 类似 log call）。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（20 public headers scanned, 0 leaks；P3G.1 partial 不加新 header）。
-- 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity / AYShader / AYPhysics maintainer 拥有各自的 merge gate。P3G.1 partial 不开任何跨模块 PR（counter scaffolding + log warning pure in-AY2D）。
+- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath AYLog)` 持续生效。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（20 public headers scanned, 0 leaks；P3D.2 不加新 header）。
+- 跨模块 PR 仍按 `design.md` §4.2.1 deferred。P3D.2 不开任何跨模块 PR（pure math composite in-AY2D）。
 
 ## 重要规则
 
