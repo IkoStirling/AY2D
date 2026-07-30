@@ -778,10 +778,25 @@ This guard target is the **Phase 1 exit gate** (added to §11.1 row "Skeleton co
 | L-15 | §4.1 |
 | L-16 | §2.2, §3.1, §4.1 |
 | L-17 | §10.1, §10.2, §10.3 |
+| L-3I-1 (chunk-source ownership) | §13.21, §18.7 |
+| L-3I-2 (one-source-per-tilemap) | §13.21, §18.7 |
+| L-3I-3 (purge reuses eviction path) | §13.21, §18.7 |
+| L-3I-4 (pending cancel ≠ eviction) | §13.21, §18.7 |
+| L-3I-5 (removeTilemap strict ordering) | §13.21 |
+| L-3I-6 (swap is no-purge) | §13.21 |
+| L-3I-7 (direct purge ≠ epoch bump) | §13.21 |
+| L-3I-8 (camera POD style) | §13.22 |
+| L-3I-9 (snapshot diff O(1) epoch fast path) | §13.23 |
+| L-3I-10 (snapshot diff same-world precondition) | §13.23 |
+| L-3I-11 (snapshot diff `(id, gen)` key) | §13.23 |
+| L-3I-12 (snapshot diff sort + two-pointer) | §13.23 |
+| L-3I-13 (forward lock: future mutator bumps epoch) | §13.23 |
+| KI-3I-1 (`eraseByKey` not bumping `evictions_lru`) | §13.21, §18.7 (deferred to Phase 3J) |
+| KI-3I-2 (sentinel bug in `evictDownTo(0)` — fixed in P3I.2) | §13.21 |
 
 ---
 
-*End of AY2D Phase 0 design. No code merged.*
+*AY2D at v0.1.21 (2026-07-30). Phase 0/1+/2/3A/3B/3C/3D/3E/3F/3G/3G.1/3G.2a/3H.1/3H.2/3H.3/Phase 5/3I.1/3I.2/3I.3/3I.4 all shipped in-AY2D; cross-module PRs (CM-1..CM-5) deferred to §4.2.1 owners.*
 
 ---
 
