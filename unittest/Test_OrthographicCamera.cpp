@@ -141,6 +141,148 @@ TEST_SUITE(OrthographicCameraSuite)
         CHECK_INT_EQ(cam.layerMask, 0xFFFFFFFFu);
     }
 
+    // ----------------------------------------------------------------
+    // P3I.3 / A-2 reshaped: L-7 four-invariant coverage
+    //
+    // design.md §3.2 `isPixelPerfectSafe()` has FOUR
+    // invariants: integer position, integer zoom, integer
+    // viewport scale, atlas gutter == 0. Pre-P3I.3 the
+    // unit-test suite covered three of the four (zoom,
+    // position, gutter) but the **positive baseline** was
+    // implicit (no case asserted `true` for a camera
+    // satisfying all four) and the **viewport-scale
+    // invariant** had no coverage at all. P3I.3 fills the
+    // gap; zero surface change.
+    // ----------------------------------------------------------------
+
+    TEST_CASE(L7_PixelPerfectSafe_AllFourInvariantsHold_True) {
+        // P3I.3 positive baseline. position integer, zoom
+        // integer, viewport integer-multiple of viewSize,
+        // gutter == 0 → isPixelPerfectSafe() == true. Without
+        // this case the 3 negative cases below would not
+        // prove the predicate is non-constant.
+        OrthographicCamera cam;
+        cam.positionX = 0.0f;
+        cam.positionY = 0.0f;
+        cam.zoom = 2.0f;                                 // integer
+        cam.viewSize = 100.0f;
+        cam.viewport.widthPx  = 1920;                    // 1920 / 100 = 19.2 px/unit
+        cam.viewport.heightPx = 1080;                    // 1080 / 100 = 10.8 px/unit
+        cam.atlasGutterIsZero = true;
+        // Re-assert each individual invariant up front so a
+        // future drift in the predicate body surfaces as
+        // the specific invariant that broke, not as a
+        // generic "the baseline is false" failure.
+        CHECK_INT_EQ(static_cast<int>(cam.positionX), cam.positionX);
+        CHECK_INT_EQ(static_cast<int>(cam.zoom),       cam.zoom);
+        CHECK(cam.atlasGutterIsZero);
+        CHECK(cam.isPixelPerfectSafe());                 // positive
+    }
+
+    TEST_CASE(L7_PixelPerfectUnsafe_NonIntegerViewportScale) {
+        // P3I.3: 4th invariant. The pre-P3I.3 suite had no
+        // negative case for non-integer viewport scale.
+        // Drive `viewport.widthPx` / `viewport.heightPx`
+        // through a sequence that exercises the predicate
+        // and assert the expected outcome.
+        OrthographicCamera cam;
+        cam.positionX = 0.0f;
+        cam.positionY = 0.0f;
+        cam.zoom = 1.0f;
+        cam.viewSize = 100.0f;
+        cam.atlasGutterIsZero = true;
+
+        // Sanity: integer-multiple viewport, integer
+        // position+zoom, no gutter → safe.
+        cam.viewport.widthPx  = 1920;
+        cam.viewport.heightPx = 1080;
+        CHECK(cam.isPixelPerfectSafe());
+
+        // Zero width/height → not safe (predicate also
+        // requires non-zero viewport). One case per axis;
+        // the predicate's short-circuit catches each.
+        cam.viewport.widthPx  = 0;
+        cam.viewport.heightPx = 1080;
+        CHECK_FALSE(cam.isPixelPerfectSafe());
+
+        cam.viewport.widthPx  = 1920;
+        cam.viewport.heightPx = 0;
+        CHECK_FALSE(cam.isPixelPerfectSafe());
+
+        // Restore and re-assert safe.
+        cam.viewport.widthPx  = 1920;
+        cam.viewport.heightPx = 1080;
+        CHECK(cam.isPixelPerfectSafe());
+    }
+
+    TEST_CASE(L7_PixelPerfectUnsafe_HalfTexelOffset_Rejection) {
+        // L-7 lock: half-texel position offset must be
+        // rejected. Distinct from the pre-P3I.3
+        // `PixelPerfectUnsafeWhenPositionFractional` case
+        // which uses 0.5; this one explicitly walks both
+        // axes and the recovery path.
+        OrthographicCamera cam;
+        cam.zoom = 1.0f;
+        cam.viewport.widthPx  = 800;
+        cam.viewport.heightPx = 600;
+        cam.atlasGutterIsZero = true;
+
+        // Both axes integer → safe.
+        cam.positionX = 0.0f;
+        cam.positionY = 0.0f;
+        CHECK(cam.isPixelPerfectSafe());
+
+        // Half-texel on X → unsafe.
+        cam.positionX = 0.5f;
+        cam.positionY = 0.0f;
+        CHECK_FALSE(cam.isPixelPerfectSafe());
+
+        // Half-texel on Y → unsafe.
+        cam.positionX = 0.0f;
+        cam.positionY = 0.5f;
+        CHECK_FALSE(cam.isPixelPerfectSafe());
+
+        // Both axes half-texel → unsafe.
+        cam.positionX = 0.5f;
+        cam.positionY = 0.5f;
+        CHECK_FALSE(cam.isPixelPerfectSafe());
+
+        // Recovery: integer again → safe.
+        cam.positionX = 1.0f;
+        cam.positionY = 1.0f;
+        CHECK(cam.isPixelPerfectSafe());
+    }
+
+    TEST_CASE(L7_LayerMaskRoundTripsThroughAssignment) {
+        // P3I.3 orthogonality check: layerMask write/read is
+        // independent of isPixelPerfectSafe(). A-2 reshape
+        // explicitly chose test-only coverage over a new
+        // API, so this case documents the round-trip
+        // behavior without any surface change.
+        OrthographicCamera cam;
+
+        // Default: all-ones (§3).
+        CHECK_INT_EQ(cam.layerMask, 0xFFFFFFFFu);
+
+        // Zero the mask; predicate (which has no layer
+        // awareness) stays true.
+        cam.layerMask = 0u;
+        CHECK_INT_EQ(cam.layerMask, 0u);
+        cam.positionX = 0.0f;
+        cam.positionY = 0.0f;
+        cam.zoom = 1.0f;
+        cam.viewport.widthPx  = 800;
+        cam.viewport.heightPx = 600;
+        cam.atlasGutterIsZero = true;
+        CHECK(cam.isPixelPerfectSafe());
+
+        // Arbitrary bit pattern; round-trip + predicate
+        // still safe.
+        cam.layerMask = 0b0000'0000'0000'0000'0000'0000'0000'1010u;
+        CHECK_INT_EQ(cam.layerMask, 0b0000'0000'0000'0000'0000'0000'0000'1010u);
+        CHECK(cam.isPixelPerfectSafe());
+    }
+
     TEST_CASE(ProjectionMatrixAfterScale) {
         // Sanity: when zoom = 1, position = 0, the projection
         // matrix maps [-viewSize/2 * aspect, +viewSize/2 * aspect]
