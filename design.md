@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3I.1 ship (Tilemap::blockedTileIds set + flagsAtRaw three-segment data-side wire; §13.20). §13.PF C6 → C6-R1 amendment lands in the pre-slice commit that immediately precedes P3I.1.
-> **Version**: v0.1.18 (2026-07-30).
+> **Status**: P3I.2 ship (World2D::removeTilemap LRU-coherent chunk-source purge; §13.21 + §18.7 one-source-per-tilemap lock). P3I.1 (blockedTileIds, §13.20) and §13.PF C6 → C6-R1 amendment still in the chain.
+> **Version**: v0.1.19 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2756,6 +2756,190 @@ Total tests: **25 TEST_SUITE / 883 CHECK assertions PASS**
   `evictions_lru`; P3I.2 will land an additional note
   about this).
 
+### 13.21 P3I.2 — `World2D::removeTilemap` LRU-coherent chunk-source purge (v0.1.19)
+
+> Phase 3I.2 closes the last in-AY2D residue on
+> `removeTilemap`: a tilemap with a bound chunk source now
+> has its source purged at remove time, so the source's
+> LRU resident set and counters stay coherent with the
+> tilemap's lifetime. **No new cross-module PR.** Stays
+> inside the AY2D submodule.
+
+**New surface** (minimal, §11.2 audit-disciplined):
+
+| Symbol | Returns | Purpose |
+|---|---|---|
+| `ITilemapChunkSource::purgeChunks()` | `void` | Drop every resident chunk + cancel every pending load. **Pure virtual** (Gate G2 hit; `rg` confirmed no external implementer in `D:\Projects\AYRuntime\` outside `AY2D/`). |
+| `InMemoryTilemapChunkSource::purgeChunks()` | `void` | Override: `cancelAllPending() + evictDownTo(0)`. Reuses the LRU release path → bgfx-leak guard stays green. |
+| `InMemoryTilemapChunkSource::cancelAllPending()` | `void` | New private helper. `_pending.clear()`. **Does not bump `evictions_lru`** (pending requests were never resident). |
+| `World2D::Entry::chunkSource` | `ITilemapChunkSource*` | New public field. Non-owning. `nullptr` = legacy / shared-source mode (§18.7). |
+| `World2D::addTilemap(layer, sortingKey, chunkSource)` | `TilemapHandle` | New 3-arg overload. The 2-arg overload delegates with `nullptr`. |
+| `World2D::findEntryByHandle(h)` (private) | `Entry*` | New mutable-pointer lookup used by `removeTilemap` to read `chunkSource` BEFORE erasing the entry. |
+
+**Surface delta: 1 field + 1 public 3-arg overload + 2 new
+public methods + 1 private helper + 1 private lookup.** No
+new types, no new headers, no new dependencies.
+
+**L-3I-1..L-3I-7 invariant locks** (recorded here so the
+plan agent's gates are reproducible from the docs alone):
+
+- **L-3I-1 (chunk-source ownership)** — `Entry::chunkSource`
+  is **non-owning**. Lifetime of the source is the caller's
+  responsibility; this is the same convention as
+  `Entry::resource` (the `IAYTilemap*`). The cross-module
+  Phase 4 streaming PR (§4.2.1) replaces both with
+  strong-ref handles (`TilemapResourceHandle`).
+- **L-3I-2 (one-source-per-tilemap, §18.7)** — each tilemap
+  binds at most one chunk source at a time. `purgeChunks()`
+  semantics = "purge all of THIS source's chunks". This is
+  not a "per-tilemap" key — keys remain `(ChunkCoord)` per
+  source. Sharing one source across N tilemaps is the
+  caller's choice (§18.7 second use case).
+- **L-3I-3 (purge reuses eviction path)** — `purgeChunks`
+  calls `evictDownTo(0)`, never `_cache.clear()` directly.
+  The bgfx-leak guard relies on this: the only public release
+  path is `evictByKey → eraseByKey` (per-chunk), and
+  `evictDownTo` is the only public bulk release path.
+  Bypassing it would land a `clear()`-style shortcut that
+  skips the counter bookkeeping.
+- **L-3I-4 (pending cancel ≠ eviction)** — `cancelAllPending()`
+  bumps no counter. `evictions_lru` is bumped exactly once
+  per previously-resident chunk in `evictDownTo(0)` — so a
+  purge that clears 5 resident + 3 pending entries bumps
+  `evictions_lru` by 5, **not 8**. This is locked in test
+  case 7 of `Test_World2DRemoveTilemapPurge.cpp`.
+- **L-3I-5 (removeTilemap strict ordering)** —
+  ```
+  Entry* e = findEntryByHandle(h);
+  if (!e) return false;
+  if (e->chunkSource) e->chunkSource->purgeChunks();  // 1
+  if (removeEntryByHandle(h)) {                       // 2
+      bumpEpoch();                                     // 3
+      tilemaps_in_world-- (saturating);                // 4
+      return true;
+  }
+  ```
+  Purge happens **before** entry erase (so the pointer
+  read is valid); epoch bump happens **after** both purge
+  and erase so the epoch captures the world-shape change
+  only, not the chunk eviction.
+- **L-3I-6 (swap is no-purge)** — `swapTilemap` does not
+  touch `chunkSource` and does not call `purgeChunks`. The
+  resident set and `evictions_lru` are unchanged across a
+  swap; only `layer` / `sortingKey` are written and only
+  `resourceEpoch` bumps. Locked in test case 5.
+- **L-3I-7 (direct purge does not bump epoch)** — a caller
+  invoking `src.purgeChunks()` outside of `World2D` does
+  not touch `resourceEpoch`. This is the hook for the
+  future cross-module consumer (e.g. a phase-4 streaming
+  controller) to call purge without confusing World2D's
+  epoch bookkeeping. Locked in test case 8.
+
+**§13.20 "Open follow-ups" was rewritten** to fold P3I.2
+in and to defer only the P3I.3 / P3I.4 residue. The
+KI-3I-1 entry was promoted to a dedicated sub-section
+below.
+
+**KI-3I-1 (known inconsistency, deferred)** —
+`InMemoryTilemapChunkSource::eraseByKey(MapKey key)` does
+**not** bump `evictions_lru` (only `chunk_resident_count`).
+This is observable: a single-chunk `eraseByKey` call leaves
+`evictions_lru` unchanged. The counter is bumped in
+`evictIfNeeded` (over-cap path) and `evictDownTo` (soft-cap
+and purge paths) — i.e. only the bulk paths. The fix
+candidate is to add the same `_counters.evictions_lru.fetch_add(1, ...)`
+line to `eraseByKey`; the rationale for **not** fixing it
+in P3I.2 is that no current call site uses `eraseByKey` for
+eviction (the only caller is the per-chunk internal path in
+`evictIfNeeded` and `evictDownTo`, which already account
+for the counter bump upstream). Promoting the counter
+bump into `eraseByKey` would **double-count** under those
+callers. A clean fix needs a small refactor (e.g. an
+"internal" variant without the counter bump); deferred to
+Phase 3J.
+
+**Tests** (`Test_World2DRemoveTilemapPurge.cpp`, suite
+`World2DRemoveTilemapPurge`, 8 cases / 26 CHECK):
+
+1. `RemoveTilemap_WithSource_PurgesAllResidentChunks` (4
+   CHECK) — cap=10, put 8; remove → 0 resident +
+   `evictions_lru == 8`.
+2. `RemoveTilemap_WithSource_BumpsEpochExactlyOnce` (3
+   CHECK) — add bumps epoch to E; remove bumps to E+1;
+   second remove (stale handle, `false`) does NOT bump.
+   L-3I-5 case 3 lock.
+3. `RemoveTilemap_DecrementsTilemapsInWorldExactlyOnce`
+   (4 CHECK) — 1 → 0; second remove on already-removed
+   handle returns `false` and counter stays 0
+   (saturating, §13.15).
+4. `RemoveTilemap_NullSource_LegacyOverloadUnaffected`
+   (3 CHECK) — 2-arg `addTilemap` (nullptr source);
+   remove returns `true`, epoch +1, no crash.
+5. `SwapTilemap_DoesNotPurgeChunks` (4 CHECK) — swap
+   leaves `residentCount()==8` and `evictions_lru==0`;
+   handle still valid. L-3I-6 lock.
+6. `PurgeChunks_Idempotent` (3 CHECK) — two consecutive
+   `purgeChunks()` calls: second one bumps no counter.
+7. `PurgeChunks_CancelsPending_NoEvictionCounterInflation`
+   (3 CHECK) — resident 5 + pending 3; purge →
+   `evictions_lru == 5` (NOT 8). L-3I-4 lock.
+8. `DirectPurge_DoesNotBumpResourceEpoch` (2 CHECK) —
+   direct `src.purgeChunks()` (no World2D in the call
+   stack) leaves `world.resourceEpochValue()` unchanged.
+   L-3I-7 lock.
+
+Total tests: **26 TEST_SUITE / 903 CHECK assertions
+PASS** (was 25 / 877 at v0.1.18; +1 suite, +26 CHECK).
+
+**Files modified**:
+
+- `include/AYTilemapChunkSource.h` (+2 lines: pure virtual
+  `purgeChunks`; `+1` override decl; `+1` private
+  `cancelAllPending` decl)
+- `include/AYWorld2D.h` (+1 field in `Entry`;
+  `+1` 3-arg `addTilemap` overload; `+1` private
+  `findEntryByHandle`)
+- `src/AYInMemoryTilemapChunkSource.cpp` (+~30 lines:
+  `cancelAllPending` + `purgeChunks` impl; the
+  pre-existing `evictDownTo` got its sentinel fixed
+  — see KI-3I-2 below)
+- `src/AYWorld2D.cpp` (`removeTilemap` body rewrite per
+  L-3I-5; new 3-arg `addTilemap` impl; 2-arg delegates
+  to 3-arg; new `findEntryByHandle` impl; `swapTilemap`
+  untouched; `+~25/-~6` lines net)
+- `unittest/Test_World2DRemoveTilemapPurge.cpp` (NEW, 198 lines)
+- `unittest/CMakeLists.txt` (`+1` test source line)
+
+**Files NOT touched**: `TilemapEntryView` (§13.14 /
+§13.19 shape lock intact), `TilemapBinding` (deprecated,
+no resurrection), root `CMakeLists.txt` / `.gitmodules`
+(handled by the root-bump commit).
+
+**KI-3I-2 (sentinel bug fixed in P3I.2)** — the
+pre-P3I.2 `evictDownTo(uint32_t target)` used a
+sentinel-of-one when `target == 0`, leaving one chunk
+behind. This was the only caller path for
+`evictDownTo(0)` (the purge path); a single-purge test
+would have shown `evictions_lru == 7` instead of 8. P3I.2
+amends the body to interpret `target == 0` as
+"drain everything". P3G.2a (`setMaxChunksCpuSoftCap`)
+callers always pass `softCap > 0`, so the soft-cap path is
+unaffected. The fix is **behavior-additive** (only the
+`target == 0` edge case changes; non-zero targets are
+identical).
+
+**Open follow-ups** (after P3I.2):
+
+- Phase 5 follow-ups still open (cross-module PR
+  territory): see §13.20 — unchanged.
+- P3I.3 (L-7 four-invariant test coverage, test-only)
+  and P3I.4 (`World2DSnapshot::diff`) continue Phase 3I
+  in-AY2D; both ship next.
+- Cross-module PRs (CM-1..CM-5) still deferred per
+  §4.2.1.
+- KI-3I-1 (`eraseByKey` not bumping `evictions_lru`)
+  remains deferred to Phase 3J.
+
 ---
 
 ## 18. Phase 3G chunk-source budget + reject counter (in-AY2D scope)
@@ -2939,6 +3123,90 @@ for soft-cap eviction blocked by pin set).
   this pattern (`InMemoryTilemapChunkSource::requestChunk`
   stamps `requestTimeUs`); tests use a helper `advanceWindow`
   to make them reproducible (no `sleep()` in unit tests).
+
+### 18.7 One-source-per-tilemap model + `purgeChunks` semantics (P3I.2 lock)
+
+> Added in P3I.2 (§13.21). This sub-section is the model
+> lock for the `Entry::chunkSource` field and the new
+> `ITilemapChunkSource::purgeChunks()` virtual. **§18.4 was
+> already taken** by the `Test_ChunkSourceBudget.cpp` test
+> list; P3I.2 deliberately inserts this lock as §18.7 to
+> avoid renumbering the existing 18.4–18.6 sections (per the
+> "no hygiene churn" rule in the Phase 3H retrospective).
+
+**Model**:
+
+- Each `World2D::Entry` binds **at most one**
+  `ITilemapChunkSource*` at a time.
+- `purgeChunks()` semantics = "purge all of THIS source's
+  chunks". There is no `purgeChunksFor(Entry)` overload in
+  the AY2D-internal surface today; the source is the
+  purge unit because the cache key is `(ChunkCoord)` and
+  the cache does not know which tilemap each chunk belongs
+  to.
+- Sharing one source across N tilemaps is the caller's
+  choice: pass the same `&src` to N `addTilemap(..., &src)`
+  calls, and a `removeTilemap` on any ONE of them will
+  purge the entire source. This is **intentional and
+  documented**: the LRU cache has no per-tilemap partition,
+  so a `purgeChunks` always lands as "purge all". The two
+  expected use cases:
+
+  1. **One source per tilemap** (default, recommended for
+     P3I.2 demos and most product paths): each tilemap has
+     a unique `InMemoryTilemapChunkSource`; the
+     `removeTilemap` call is a clean teardown for that
+     tilemap's chunks only.
+  2. **Shared source across N tilemaps** (e.g. several
+     tilemap variants reading the same atlas chunk pool):
+     a `removeTilemap` on one tilemap will purge the
+     shared pool, so the user must re-prefetch for the
+     remaining tilemaps. This is a **product-level
+     decision**, not a knob on the source.
+
+- `nullptr` `chunkSource` = legacy / no-source mode. The
+  2-arg `addTilemap(layer, sortingKey)` overload delegates
+  with `nullptr`; the entry is otherwise identical, and
+  `removeTilemap` simply skips the purge step in that case.
+
+**Why no per-tilemap key in the source cache** — adding a
+tilemap-id dimension to the cache key would require the
+source to be tilemap-aware, which crosses a module boundary
+in the future (`TilemapStreamingSystem` would own the
+key-space anyway). P3I.2 stays in-AY2D by keeping the cache
+key as `(ChunkCoord)` and binding the source to the entry
+non-owningly. The cross-module Phase 4 streaming PR
+(§4.2.1) is the place to revisit the key shape — at that
+point the chunk source becomes a member of the streaming
+system, not a field on the entry.
+
+**KI-3I-1 (`eraseByKey` counter asymmetry)** — the
+`InMemoryTilemapChunkSource::eraseByKey(MapKey key)` helper
+deletes a single entry from the cache and updates
+`chunk_resident_count`, but does **not** bump
+`evictions_lru`. The counter is bumped in the bulk paths
+(`evictIfNeeded`, `evictDownTo`) but not in the per-key
+helper. This is observable if a caller invokes `eraseByKey`
+directly outside of a bulk-eviction call site (none exist
+in AY2D today; the only public release path is the bulk
+helpers). The asymmetry was not introduced in P3I.2 — it
+predates Phase 3G. P3I.2 documents the gap here so future
+debugging does not chase a ghost. The fix candidate is a
+small refactor (an "internal" variant of `eraseByKey` that
+does not bump the counter, with the public helper bumping
+it); deferred to Phase 3J.
+
+**Invariants** (re-stated from §13.21 for grep-ability):
+
+- `purgeChunks` **reuses** `evictDownTo(0)` — never bypasses
+  the LRU release path. bgfx-leak guard stays green.
+- `purgeChunks` **bumps `evictions_lru` exactly once** per
+  previously-resident chunk. Pending requests are cancelled
+  separately and bump no counter (L-3I-4).
+- `purgeChunks` is **idempotent**: a second consecutive call
+  sees an empty cache and is a no-op. Test case 6.
+- `purgeChunks` does **not bump `resourceEpoch`** when
+  called outside of `World2D::removeTilemap`. Test case 8.
 
 ---
 

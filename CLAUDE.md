@@ -1,19 +1,19 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.17, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.19 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.19, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.21 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — P3I.1 in-AY2D blocked-tile-id set + flagsAtRaw data-side wire (2026-07-30)
+## 当前状态 — P3I.2 in-AY2D `removeTilemap` LRU-coherent chunk-source purge (2026-07-30)
 
-- `design.md` 是权威设计（v0.1.18 + audit F-1..F-19 + Changelog §13.1..§13.20 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G）。代码与 design.md 不一致时，design.md 优先。
-- 子模块 HEAD = P3I.1：`Tilemap::blockedTileIds : std::unordered_set<uint32_t>` 公共字段 + `flagsAtRaw` 三段求值（OOB→Empty / empty→Empty / set lookup→Solid|Empty）。§13.PF C6 → C6-R1 amendment（保留 no-override + base-default + None ban；仅 supersede body 恒返 Empty）。Consumer 仍 cross-module (AYPhysics, §4.2.1)。
-- `unittest/` 现在有 **25** 个 test 文件 / **883** CHECK assertions PASS（P3H.3 24/855 → P3I.1 25/883 = +1 suite, +28 CHECK）。新增 `Test_TilemapBlockedTileIds` 走真 wired delta（6 case：empty back-compat / hit / remove / OOB-with-default-blocked / adapter-no-override / 16-vs-32）。
-- 锁行为（§3.4 + §13.PF + §13.20）：§13.PF C6-R1 retained clauses（isBlocked 不 override / None ban / adapter zero-change）持续生效；§13.PF C8 TileCoord 签名零变更持续生效；§13.20 L-3I-1（ownership：blockedTileIds 由 .aytilemap loader 填充，AY2D 不暴露 mutator）持续生效；§13.20 L-3I-2（three-segment ordering，OOB 先退 / empty fast path / set lookup）持续生效。
-- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G / Phase 5 / P3H.2 / P3G.2a / P3G.1 partial / P3D.2 / P3H.1 / P3H.3 任何已有测试。
+- `design.md` 是权威设计（v0.1.19 + audit F-1..F-19 + Changelog §13.1..§13.21 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G + §18.7 P3I.2 one-source-per-tilemap model + KI-3I-1 + KI-3I-2）。代码与 design.md 不一致时，design.md 优先。
+- 子模块 HEAD = P3I.2：`World2D::Entry::chunkSource : ITilemapChunkSource*` 非 owning 公共字段 + `addTilemap(layer, sortingKey, chunkSource*)` 3-arg overload（2-arg 委托 nullptr）+ `ITilemapChunkSource::purgeChunks() noexcept = 0` 纯虚（Gate G2 确认无外部 implementer）+ `InMemoryTilemapChunkSource::purgeChunks` override = `cancelAllPending() + evictDownTo(0)`（**复用 eviction 释放路径**，bgfx-leak guard 守住）。`World2D::removeTilemap` 严格 L-3I-5 ordering：find → optional purge → removeEntryByHandle → bumpEpoch → saturating decrement。`swapTilemap` 零改动（L-3I-6 守住）。`evictDownTo(0)` KI-3I-2 sentinel bug 修复（drain 全量）。
+- `unittest/` 现在有 **26** 个 test 文件 / **903** CHECK assertions PASS（P3I.1 25/883 → P3I.2 26/903 = +1 suite, +26 CHECK；3× consecutive green locked #1 守住）。新增 `Test_World2DRemoveTilemapPurge` 走真 wired delta（8 case：purge-all / epoch-once / saturating-decrement / null-source-legacy / swap-no-purge / purge-idempotent / pending-no-inflate / direct-purge-no-epoch）。
+- 锁行为（§3.4 + §13.PF + §13.15 + §13.20 + §13.21 + §18.7）：§13.PF C6-R1 retained clauses（isBlocked 不 override / None ban / adapter zero-change）持续生效；§13.20 L-3I-1..L-3I-2 持续生效；§13.21 L-3I-1..L-3I-7 全部生效（chunk-source ownership / one-source-per-tilemap / purge 复用 eviction 路径 / pending cancel ≠ eviction / removeTilemap 严格 ordering / swap 不 purge / 直接 purge 不 bump epoch）。§18.7 model lock：each entry binds 0..1 source; nullptr = legacy mode。
+- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G / Phase 5 / P3H.2 / P3G.2a / P3G.1 partial / P3D.2 / P3H.1 / P3H.3 / P3I.1 任何已有测试。
 - **R-10 lock 守住**：AY2D 没有 AYAnimation include / link。
 - `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath AYLog)` 持续生效。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（21 public headers scanned, 0 leaks；P3I.1 加 `#include <unordered_set>` 是 STL 不是 bgfx）。
-- **Phase 3I 计划 4 slice** (P3I.1 blockedTileIds / P3I.2 removeTilemap purge / P3I.3 L-7 coverage / P3I.4 snapshot diff)。P3I.1 已 ship；后续 3 slice 按 plan 执行。跨模块 PR (CM-1..CM-5) 仍按 `design.md` §4.2.1 deferred。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（21 public headers scanned, 0 leaks；P3I.2 公共头增量仅 `ITilemapChunkSource::purgeChunks` 纯虚 + `InMemoryTilemapChunkSource::purgeChunks` override + `Entry::chunkSource` field + 3-arg `addTilemap` overload，无 bgfx 路径）。
+- **Phase 3I 计划 4 slice** (P3I.1 blockedTileIds / P3I.2 removeTilemap purge / P3I.3 L-7 coverage / P3I.4 snapshot diff)。P3I.1 + P3I.2 已 ship；后续 2 slice 按 plan 执行。跨模块 PR (CM-1..CM-5) 仍按 `design.md` §4.2.1 deferred。**KI-3I-1** (`eraseByKey` evictions_lru 不 bump) deferred to Phase 3J.
 
 ## 重要规则
 
