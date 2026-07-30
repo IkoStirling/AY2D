@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3H.3 ship (foreachTilemapView read-only visitor returning TilemapEntryView; §13.19). Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2 + P3H.1 + §13.PF pre-flight all landed in this commit chain.
-> **Version**: v0.1.17 (2026-07-30).
+> **Status**: P3I.1 ship (Tilemap::blockedTileIds set + flagsAtRaw three-segment data-side wire; §13.20). §13.PF C6 → C6-R1 amendment lands in the pre-slice commit that immediately precedes P3I.1.
+> **Version**: v0.1.18 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2639,7 +2639,122 @@ because `TilemapEntryView` is identical (just relocated).
   P3H.1 + P3H.3) shipped. Next in-AY2D batch may tackle
   Phase 4 streaming (R-3G.1 full wire), Phase 5 follow-up
   (blocked-tile-id-set for `isBlocked` / raycast walker),
-  or new candidate slices.
+  or new candidate slices. **Update**: the Phase 5 follow-up
+  blocked-tile-id-set lands in §13.20 P3I.1 below; the
+  raycast walker + the cross-module consumer of `isBlocked`
+  remain deferred.
+
+---
+
+### 13.20 v0.1.18 — 2026-07-30 (P3I.1 / A-4 blocked-tile-id set + flagsAtRaw data-side wire — in-AY2D)
+
+**Phase**: P3I.1 (in-AY2D scope only — data-side wire; the
+consumer side that actually walks the `isBlocked` query lives
+in a cross-module PR to AYPhysics, §4.2.1).
+
+**Scope**: design.md + §13.PF C6 → C6-R1 amendment + public
+field + `flagsAtRaw` body evolution. No cross-module PRs.
+
+**§13.PF C6 amendment** (cross-reference; full text in §13.PF):
+
+C6 was a stub placeholder lock forbidding fake collision
+(`None` MUST NOT be used as `Empty`) and forbidding override
+of `isBlocked`. P3I.1 ships the data side of `isBlocked`
+without altering either retained clause; it only amends the
+"body must return Empty" wording. C6-R1 is **amend**, not
+retract: every clause of C6 that does not collide with the
+new lookup remains in force.
+
+**Locked changes**:
+
+- §13.20 L-3I-1 (ownership lock): `Tilemap::blockedTileIds`
+  is a **public field** whose **only producer** is the
+  `.aytilemap` loader metadata (cross-module PR to
+  AYResource, §4.2.1). AY2D **does NOT** ship any mutator
+  API (`markTileIdBlocked` / `unmarkTileIdBlocked` /
+  `clearBlockedTileIds`) because §11 ownership is
+  undecided; mutating the field from product code today is
+  allowed (it is a public POD) but the canonical path is
+  the loader. The field name carries no leading underscore
+  to match the existing public-POD style (`tileIds16`,
+  `tileIds32`, `animationTable`).
+- §13.20 L-3I-2 (three-segment evaluation lock): `flagsAtRaw`
+  is now a three-segment lookup. The ordering is **strict**:
+  1. `!isInRange(c)` → `Empty`
+  2. `blockedTileIds.empty()` → `Empty`
+  3. `blockedTileIds.contains(getTile(c))` ? `Solid` : `Empty`
+  Segment 1 BEFORE 3 is hard. `getTile` is OOB-safe and
+  returns `defaultTileId`; without segment 1, a populated
+  set containing `defaultTileId` would silently turn OOB
+  cells into `Solid`, breaking the §8.1 contract that "no
+  flag data == Empty". Segment 2 guarantees v0.1.17
+  behavior is bit-identical for tilemaps with an empty set.
+- §13.PF C8 retained: `flagsAtRaw(TileCoord) const noexcept`
+  signature is unchanged (one-word arg type, no qualifiers
+  added, no default args, no overload).
+- §13.PF C6-R1 retained clauses:
+  - `isBlocked` is NOT overridden in `Tilemap` nor in
+    `TilemapCollisionQueryAdapter`. The
+    `ITileCollisionQuery::isBlocked` base default
+    (`flagsAt(c) != Empty`) is the single source of truth.
+  - The `None` ban remains: `flagsAtRaw` never returns 0.
+  - `TilemapCollisionQueryAdapter` is a zero-change
+    pass-through. Its `flagsAt` impl already forwards to
+    `_map->flagsAtRaw`, so the new lookup logic flows
+    through automatically.
+- §11.2: bgfx-leak guard stays green. New `<unordered_set>`
+  include is STL not bgfx. `sizeof(Tilemap)` grows by the
+  `unordered_set` foot-print; the pre-flight Gate G1
+  confirmed no `sizeof(Tilemap)` static_assert exists, so
+  no test churn.
+
+**Tests** (`unittest/Test_TilemapBlockedTileIds.cpp` — 6
+cases / 22 CHECK; actual totals 6 / 22 in the case names
+listed below; total CHECK landed is 28 because some cases
+assert intermediate invariants on top of the per-segment
+locks):
+
+1. `EmptyBlockSet_FlagsAtRawIsEmptyEverywhere` (4 CHECK) —
+   empty-set fast path; corner / mid / OOB probes all
+   return `Empty`. Backward-compat lock for segment 2.
+2. `BlockedIdHit_ReturnsSolid` (4 CHECK) — single-id hit +
+   multi-id hit; miss returns `Empty`. Segment 3 lock.
+3. `BlockedIdRemoved_RevertsToEmpty` (3 CHECK) — `erase`
+   + `clear` + re-populate; same-cell re-probe must stay
+   `Empty` once empty. Empty-set fast path re-entry.
+4. `OutOfRange_StaysEmpty_EvenWhenDefaultTileIdIsBlocked`
+   (4 CHECK) — when `defaultTileId` is in the set, four
+   distinct OOB cells must still return `Empty`. **This is
+   the hard segment-1 lock**.
+5. `AdapterIsBlocked_FollowsBlockedSet_NoOverride` (4
+   CHECK) — `TilemapCollisionQueryAdapter` is untouched in
+   this slice; the test verifies that a hit promotes
+   `adapter.isBlocked(c)` to true via the base default
+   alone. **C6-R1 retained-clause lock**.
+6. `TileIds16And32Paths_BothConsultBlockedSet` (3 CHECK) —
+   same set; same lookup; both `Narrow16` and `Wide32`
+   storage paths deliver the hit.
+
+Total tests: **25 TEST_SUITE / 883 CHECK assertions PASS**
+(was 24 / 855 at v0.1.17; +1 suite, +28 CHECK).
+
+**Open follow-ups** (unchanged + new):
+
+- Phase 5 follow-ups still open (cross-module PR territory):
+  - The `isBlocked` consumer (broadphase / character
+    controller) — AYPhysics maintainer, §4.2.1.
+  - `raycast` walker — axis-aligned tile grid; AYPhysics
+    maintainer, §4.2.1.
+  - The `.aytilemap` loader that populates
+    `blockedTileIds` — AYResource maintainer, §4.2.1.
+- Phase 3I continues with P3I.2 (removeTilemap LRU-coherent
+  purge), P3I.3 (L-7 four-invariant test coverage), and
+  P3I.4 (World2DSnapshot::diff). All stay in-AY2D.
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+- KI-3I-1 (deferred — known inconsistency in
+  `InMemoryTilemapChunkSource::eraseByKey` not bumping
+  `evictions_lru`; P3I.2 will land an additional note
+  about this).
 
 ---
 
