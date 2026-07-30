@@ -24,7 +24,9 @@
 #include "AYWorld2D.h"
 
 // Collision-flag bitmask + operators (declared in design.md §8.1).
-// Phase 0 has no constructor / raycast impl — the enum + operator set
-// compile-check the Phase 5 contract surface even before the
-// ITileCollisionQuery consumer lands.
+// Phase 5 (2026-07-30) ships the full §8.1 type set: `Ray2D`,
+// `RaycastHit2D`, `ITileCollisionQuery`. The `TilemapCollisionQueryAdapter`
+// concrete adapter is the only in-AY2D implementation; production
+// raycast logic lands via cross-module PR (§4.2.1 to AYPhysics).
 #include "AYTileCollision.h"
+#include "AYTilemapCollisionAdapter.h"

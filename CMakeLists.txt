@@ -40,6 +40,8 @@ set(SRC_FILES
     src/AYTilemapAnimation.cpp           # Phase 3B: tick + resolveAnimatedTileId
     src/AYTilemapBatch.cpp               # Phase 3D: setTileRange / fillTile / copyTileRange + gridRect
     src/AYSpriteCulling.cpp               # Phase 3F: buildSpriteScene (AABB + layer + stable_sort)
+    src/AYTileCollision.cpp              # Phase 5: Ray2D::pointAt out-of-line
+    src/AYTilemapCollisionAdapter.cpp    # Phase 5: ITileCollisionQuery concrete adapter
 )
 
 # Phase 2 is the first time the library type flips to STATIC. The

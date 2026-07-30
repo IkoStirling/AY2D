@@ -25,6 +25,7 @@
 #include "AY2DCounters.h"
 #include "AYAtlasDesc.h"
 #include "AYTileAnimation.h"
+#include "AYTileCollision.h"  // Phase 5: CollisionFlags used by flagsAtRaw body
 #include "AYTileCoord.h"
 #include "AYTileLoadState.h"
 #include "AYTileMath.h"
@@ -185,12 +186,14 @@ struct Tilemap {
         return static_cast<uint64_t>(cols) * static_cast<uint64_t>(rows);
     }
 
-    // Phase 5+ replacement: returns Empty for any cell (no per-tile
+    // Phase 5 fix: returns Empty (1<<6) for any cell (no per-tile
     // backing store yet). Consumers (ITileCollisionQuery::isBlocked)
-    // treat Empty as "no collision".
-    [[nodiscard]] uint32_t flagsAtRaw(TileCoord cell) const noexcept {
-        (void)cell;
-        return 0u;  // Empty bit (1<<6) — see design.md §8.1
+    // treat Empty as "no collision" per §8.1 + §13.PF pre-flight
+    // retraction. The pre-Phase-5 body returned `0u` (None) — a
+    // §8.1 contract violation: `None` means "unset/unknown" and
+    // MUST NOT be used to mean "empty".
+    [[nodiscard]] uint32_t flagsAtRaw(TileCoord /*cell*/) const noexcept {
+        return static_cast<uint32_t>(CollisionFlags::Empty);  // 1<<6 — see design.md §8.1 + §13.PF
     }
 
     // Replace the grid dimensions + storage width. Resets storage to

@@ -82,6 +82,11 @@ add_executable(${TEST_TARGET}
     # streaming PR (R-3G.1). Tests use advanceWindowForTest
     # helper for deterministic rate-gate rollover (R-3G.7).
     Test_ChunkSourceBudget.cpp
+    # Phase 5 in-AY2D tests - collision types (Ray2D /
+    # RaycastHit2D / ITileCollisionQuery) +
+    # TilemapCollisionQueryAdapter + the flagsAtRaw Empty
+    # regression. design.md §13.13 / §8.1. No cross-module PR.
+    Test_TileCollisionQuery.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
