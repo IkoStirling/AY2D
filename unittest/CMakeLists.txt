@@ -103,6 +103,10 @@ add_executable(${TEST_TARGET}
     # R-3G.1 lock intact; full Distance / TimeWindow wire
     # stays deferred to the cross-module Phase 4 PR.
     Test_BudgetPolicyCounters.cpp
+    # P3D.2 in-AY2D tests - aabbOfCell centered on cellToWorld
+    # per R-3E.5 (regression for the naive corner-port bug).
+    # design.md §13.17.
+    Test_AabbOfCell.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

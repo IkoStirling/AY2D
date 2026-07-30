@@ -186,6 +186,15 @@ struct Tilemap {
         return static_cast<uint64_t>(cols) * static_cast<uint64_t>(rows);
     }
 
+    // P3D.2 (§13.17): world-space AABB of one cell. Centered on
+    // `cellToWorld(c)` (R-3E.5 cell-center) with extent = half the
+    // tile dimensions. The naive corner-port `min = cellToWorld(c);
+    // max = cellToWorld(c+{1,1})` is OFF BY HALF A CELL because
+    // `cellToWorld` returns the cell center, not the corner.
+    // Future cross-module PR adds a `cellOrigin` parameter (today
+    // hard-coded to `{0, 0}`); see P3E world-coord overloads above.
+    [[nodiscard]] ayt::math::FRectangle aabbOfCell(TileCoord c) const noexcept;
+
     // Phase 5 fix: returns Empty (1<<6) for any cell (no per-tile
     // backing store yet). Consumers (ITileCollisionQuery::isBlocked)
     // treat Empty as "no collision" per §8.1 + §13.PF pre-flight

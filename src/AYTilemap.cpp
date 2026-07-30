@@ -79,4 +79,34 @@ bool loadChunkFromSource(Tilemap&             t,
     return true;
 }
 
+// P3D.2 (§13.17): world-space AABB of one cell, centered on
+// `cellToWorld(c)` (R-3E.5 cell-center) with extent = half the
+// tile dimensions. Pure 4-line composition; kept out-of-line so
+// future SIMD / bulk variants can grow here without header
+// churn. The naive corner-port `min = cellToWorld(c); max =
+// cellToWorld(c+{1,1})` would be off by half a cell because
+// `cellToWorld` returns the cell center, not the corner.
+//
+// `cellOrigin` defaults to world `(0, 0)` to match the P3E
+// world-coord `setTile` / `getTile` overloads; a future cross-
+// module PR (camera composition, §4.2.1) lifts this to a
+// member-field-driven origin.
+ayt::math::FRectangle Tilemap::aabbOfCell(TileCoord c) const noexcept {
+    using ayt::math::FVector2;
+    // `fromCenterExtent(center, extent)` is named `extent` but
+    // multiplies by 0.5 internally (see MathTypes.cpp:2039-2042),
+    // so we pass the FULL tile dimensions. Passing half-extent
+    // would shrink the AABB by 4x.
+    const FVector2 center = cellToWorld(
+        c,
+        FVector2{0.0f, 0.0f},
+        static_cast<float>(tileWidth),
+        static_cast<float>(tileHeight));
+    const FVector2 extent{
+        static_cast<float>(tileWidth),
+        static_cast<float>(tileHeight),
+    };
+    return ayt::math::FRectangle::fromCenterExtent(center, extent);
+}
+
 } // namespace ayt::ay2d
