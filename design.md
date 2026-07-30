@@ -2078,12 +2078,28 @@ LRU `setCapacity` runtime control, no cross-module PRs)
   was self-contradictory: `x & mask` cannot equal `Empty` when
   `Empty` is not in `mask`. Phase 5 adapter ships the corrected
   formula.
+
+  > **C6-R1 amendment** (added 2026-07-30 ahead of Phase 3I slice 1;
+  > see §13.20 P3I.1): the C6 default `isBlocked` formula is
+  > **retained verbatim**. The body of `flagsAtRaw` is **amended**
+  > (not retracted) so that the no-flag-data path still returns
+  > `Empty` but the hit-the-block-set path returns `Solid`. The
+  > no-override-on-`isBlocked` clause is also retained. Full text in
+  > §13.20.
+
 - **C6 / `Tilemap::flagsAtRaw` contract**: clarified in §8.1 that
   `flagsAtRaw` MUST return `CollisionFlags::Empty` (1<<6) for
   cells with no flag data, NOT `CollisionFlags::None` (0). The
   current implementation returns `0u = None` (a §8.1 contract
   violation); Phase 5 slice fixes the body and adds a regression
   test.
+
+  > **C6-R1 amendment** (added 2026-07-30 ahead of Phase 3I slice 1;
+  > see §13.20 P3I.1): the C6 "body MUST return Empty" wording is
+  > **superseded** for the no-flag-data branch (still returns
+  > `Empty`) by a three-segment evaluation that allows `Solid` on
+  > a `blockedTileIds` hit. The `Empty` branch and the `None` ban
+  > are **retained**. Full text in §13.20.
 - **C8 / `TileCoord` deviation**: noted that the shipped
   `ITileCollisionQuery` interface uses `TileCoord` (consistent
   with all AY2D code per `AYTileCoord.h:5-14` deliberate refusal
