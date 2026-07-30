@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 3G — in-AY2D chunk-source budget + chunk_io_reject shipped; cross-module PRs still deferred.  
-> **Version**: v0.1.10 (2026-07-30).
+> **Status**: Phase 3G ship + pre-flight retractions applied (R-3G.1/R-3G.4 §8.1 corrections; v0.1.11-pending). Cross-module PRs still deferred per §4.2.1.
+> **Version**: v0.1.10 (2026-07-30); pre-flight retractions logged in §13.PF (version bump ships with slice 1 docs).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -516,8 +516,15 @@ public:
                          CollisionFlags layerMask,
                          RaycastHit2D& out) const noexcept = 0;
 
-    // Default impl: `flagsAt(cell) & (Solid | OneWay | Hazard) != CollisionFlags::Empty`.
+    // Default impl: `flagsAt(cell) != CollisionFlags::Empty`. A cell
+    // is "blocked" iff it carries any flag beyond the Empty bit
+    // (the §6.3 deterministic-default contract; Phase 0 §8.1 used
+    // a buggy `x & mask != Empty` form which was always true).
     // Override only when the product needs finer granularity.
+    //
+    // §13.PF pre-flight retraction: the previous wording was
+    // self-contradictory — `x & mask` cannot equal `Empty` when
+    // `Empty` is not in `mask`. Phase 5 ships the corrected form.
     virtual bool isBlocked(IVector2 cell) const noexcept = 0;
 };
 
@@ -2040,6 +2047,78 @@ LRU `setCapacity` runtime control, no cross-module PRs)
 
 ---
 
+### 13.PF v0.1.11-pre 2026-07-30 (Pre-flight retractions + bug fixes — docs only)
+
+**Phase**: Pre-flight (corrective, ahead of in-AY2D Phase 5 / 3H slice chain).
+
+**Scope**: design.md only. No code changed. No version bump yet (next bump = slice 1 docs commit, v0.1.11).
+
+**Locked changes**:
+
+- **C1 / R-3G.1 (§18.6)**: clarified that the non-LRU `setBudget`
+  no-op lock is **active, not deferred**. `Distance` requires a
+  camera reference not present in `InMemoryTilemapChunkSource`;
+  `TimeWindow` requires a per-entry access timestamp the LRU list
+  does not carry today. Both remain deferred to the cross-module
+  Phase 4 streaming PR (§4.2.1) which owns the chunk-source ↔
+  camera composition. P3G ships counter scaffolding only (P3G.1
+  partial slice).
+- **C2 / R-3G.4 (§18.1)**: documented the `TilemapBudget` 3-tier
+  residency model explicitly: `maxChunksLoaded` (hard cap, in-AY2D
+  P3A) → `maxChunksCpuSoftCap` (NEW field, in-AY2D soft cap,
+  P3G.2a slice) → `maxChunksResident` (GPU residency,
+  cross-module PR to RenderResourceManager, still deferred per
+  R-3G.4). The field set on `TilemapBudget` is **not** changed in
+  pre-flight; the new `maxChunksCpuSoftCap` field ships with the
+  P3G.2a slice commit.
+- **C6 / §8.1 default `isBlocked`**: corrected the default
+  `isBlocked` formula from `flagsAt(cell) & (Solid | OneWay |
+  Hazard) != CollisionFlags::Empty` (always-true bug) to
+  `flagsAt(cell) != CollisionFlags::Empty`. The previous form
+  was self-contradictory: `x & mask` cannot equal `Empty` when
+  `Empty` is not in `mask`. Phase 5 adapter ships the corrected
+  formula.
+- **C6 / `Tilemap::flagsAtRaw` contract**: clarified in §8.1 that
+  `flagsAtRaw` MUST return `CollisionFlags::Empty` (1<<6) for
+  cells with no flag data, NOT `CollisionFlags::None` (0). The
+  current implementation returns `0u = None` (a §8.1 contract
+  violation); Phase 5 slice fixes the body and adds a regression
+  test.
+- **C8 / `TileCoord` deviation**: noted that the shipped
+  `ITileCollisionQuery` interface uses `TileCoord` (consistent
+  with all AY2D code per `AYTileCoord.h:5-14` deliberate refusal
+  of `IVector2`) instead of `IVector2` per the §8.1 doc text.
+  §16.4 permits int↔int conversion; the deviation is documented
+  but not a breaking change. The §8.1 doc block stays as-is; the
+  shipped header uses `TileCoord`.
+- **C5 / `TilemapBinding` deprecation**: P3H.2 slice will mark
+  `TilemapBinding` (`include/AY2D/AYWorld2D.h:44-48`) deprecated
+  in favor of `TilemapEntryView` (new type, P3H.2 ship).
+  `TilemapBinding` is dead code today (grep across
+  `include src unittest design.md` returns no consumer) and
+  overlaps with `World2D::Entry`. The deprecation is additive
+  only (no behavior change).
+
+**Open follow-ups** (unchanged from §13.12 + Phase 5 / 3H slices
+  pending):
+
+- Slice 1 (Phase 5): ship `Ray2D`, `RaycastHit2D`,
+  `ITileCollisionQuery`, `TilemapCollisionQueryAdapter`; fix
+  `flagsAtRaw` body to return `Empty`.
+- Slice 2 (P3H.2): ship `World2DSnapshot` value type +
+  `TilemapEntryView`; deprecate `TilemapBinding`.
+- Slice 3 (P3G.2a): wire `maxChunksCpuSoftCap` (new field) +
+  `chunk_io_residency_reject` counter.
+- Slice 4 (P3G.1 partial): counter scaffolding +
+  `AY_LOG_WARN` on non-LRU `setBudget`.
+- Slice 5 (P3D.2): ship `Tilemap::aabbOfCell` centered on
+  `cellToWorld` per R-3E.5.
+- Slice 6 (P3H.1): ship `SpriteSheet = AtlasDesc + path`.
+- Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+
+---
+
 ## 18. Phase 3G chunk-source budget + reject counter (in-AY2D scope)
 
 > Phase 3G adds the **runtime budget gate** to
@@ -2072,6 +2151,27 @@ struct TilemapBudget {
     EvictionPolicy eviction           = EvictionPolicy::LRU;  // wire: LRU only in P3G
 };
 ```
+
+**Pre-flight (§13.PF) 3-tier clarification**: the `TilemapBudget`
+field set is a **3-tier** residency model and each tier has a
+distinct ownership boundary:
+
+1. **`maxChunksLoaded` (hard cap, evict-down-to via `setCapacity`)** —
+   in-AY2D CPU soft cap. Shipped P3A → P3G. Always honored.
+2. **`maxChunksCpuSoftCap` (NEW field, added by pre-flight)** —
+   in-AY2D CPU soft cap, evict-down-to when `setBudget` lowers it.
+   P3G.2a PR ships the wiring; until then the field is forward-decl
+   only.
+3. **`maxChunksResident` (GPU residency, R-3G.4)** — cross-module
+   PR to `RenderResourceManager`. Not wired in-AY2D. Documented
+   field stays so cross-module PR can pick up the wire without a
+   breaking change.
+
+Field ordering: `maxChunksLoaded` → `maxChunksCpuSoftCap` →
+`maxChunksResident`. Each tier is checked AFTER the previous
+tier; rejection telemetry lives in distinct counters
+(`chunk_io_reject` for rate gate; `chunk_io_residency_reject`
+for soft-cap eviction blocked by pin set).
 
 ### 18.2 Rate-limit semantics (locked, R-3G.3)
 
@@ -2163,7 +2263,16 @@ struct TilemapBudget {
 ### 18.6 Risks / invariants
 
 - **R-3G.1** non-LRU policy = no-op + `false` return. Tests
-  enforce this in case 6.
+  enforce this in case 6. **§13.PF clarification**: this lock
+  is **active**, not a TODO. `Distance` requires a camera
+  reference not present in `InMemoryTilemapChunkSource`; a
+  naive "distance from (0,0)" would silently evict the wrong
+  chunks under non-trivial camera movement. `TimeWindow`
+  requires a per-entry access timestamp the LRU list does not
+  carry today. Both policies are deferred to the cross-module
+  Phase 4 streaming PR (§4.2.1) which owns the chunk-source ↔
+  camera composition. P3G ships the counter scaffolding only
+  (P3G.1 partial).
 - **R-3G.2** `chunk_io_reject` reset discipline: cumulative
   (only `resetAll` zeros it; `resetPerFrame` does NOT). Case
   8 enforces this.
