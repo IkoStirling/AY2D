@@ -41,6 +41,25 @@ struct TilemapHandle {
     }
 };
 
+// P3H.2 + P3H.3 (§13.14 / §13.19): read-only view of one
+// `World2D::Entry`. The struct lives in this header (not in
+// `AYWorld2DSnapshot.h`) so both `World2D::foreachTilemapView`
+// (header-inline template, P3H.3) and `World2DSnapshot` (P3H.2)
+// can include it without a circular dependency.
+//
+// No `resource` field by design (§13.PF C5 / C9): at HEAD
+// `World2D::Entry::resource` is always `nullptr` (the `.aytilemap`
+// loader PR is a cross-module concern per §4.2.1) and exposing
+// `IAYTilemap*` to callers would hand out a dangling pointer
+// to an incomplete type. Consumers that need the resource read
+// `World2D::entries[i].resource` directly — no API in this
+// view surfaces it.
+struct TilemapEntryView {
+    TilemapHandle handle     {};       // default = invalid (id=0, gen=0)
+    uint32_t      layer      = 0;      // 0..31
+    uint32_t      sortingKey = 0;      // 0..0x00FFFFFF
+};
+
 struct [[deprecated("TilemapBinding is dead code; use TilemapEntryView via World2DSnapshot")]] TilemapBinding {
     TilemapHandle handle;
     uint32_t      layer = 0;     // 0..31
@@ -117,6 +136,29 @@ struct World2D {
 
     [[nodiscard]] uint32_t size() const noexcept {
         return static_cast<uint32_t>(entries.size());
+    }
+
+    // P3H.3 (§13.19): read-only visitor over the registry.
+    // Returns `TilemapEntryView` (handle / layer / sortingKey)
+    // per entry — never hands out the raw `Entry&` (which
+    // carries the dangling `resource = nullptr` to the
+    // forward-declared `IAYTilemap`). Header-inline so the
+    // call site can pick the visitor type; the visitor
+    // signature is `void(const TilemapEntryView&)`. The
+    // visitor is const, so it cannot mutate the registry;
+    // resourceEpoch is also not bumped (read-only path; §3.4
+    // lock). Order = `entries` order = registration order
+    // (the same order `World2DSnapshot::build()` uses).
+    //
+    // P3H.2 `World2DSnapshot::build` is the eager-snapshot
+    // counterpart; `foreachTilemapView` is the lazy streaming
+    // counterpart (no copy; the visitor processes entries as
+    // they are emitted).
+    template <typename F>
+    void foreachTilemapView(F f) const {
+        for (const auto& e : entries) {
+            f(TilemapEntryView{e.handle, e.layer, e.sortingKey});
+        }
     }
 
     // Layer + sortingKey -> sort key (design.md §7.4):

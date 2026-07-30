@@ -40,20 +40,18 @@
 
 namespace ayt::ay2d {
 
-// Read-only view of one `World2D::Entry`. Excludes `resource`
-// because that field is always `nullptr` at HEAD (the `.aytilemap`
-// loader PR ships the real resource via cross-module ownership —
-// §3 + §4.2.1). Consumers that need the resource can read the
-// `World2D::entries[i].resource` directly (no API in this header
-// gates that).
+// `TilemapEntryView` is defined in `AYWorld2D.h` (P3H.3 §13.19:
+// World2D::foreachTilemapView is a header-inline template that
+// needs the full definition, so the struct now lives next to
+// World2D and is re-exported via the include below). This
+// header re-uses the same struct via the include above; no
+// re-declaration here.
 //
-// `TilemapEntryView` is plain-data (POD-equivalent) so the snapshot
-// can be copied / moved without violating the World2D's invariants.
-struct TilemapEntryView {
-    TilemapHandle handle     {};       // default = invalid (id=0, gen=0)
-    uint32_t      layer      = 0;      // 0..31
-    uint32_t      sortingKey = 0;      // 0..0x00FFFFFF
-};
+// The struct deliberately excludes `resource` per §13.PF C5 /
+// C9: at HEAD `World2D::Entry::resource` is always `nullptr`
+// (the `.aytilemap` loader PR is a cross-module concern per
+// §4.2.1) and exposing `IAYTilemap*` would hand out a dangling
+// pointer to an incomplete type.
 
 // Read-only value-type snapshot of `World2D`. Built via
 // `World2DSnapshot::build(const World2D&)`. The snapshot is a

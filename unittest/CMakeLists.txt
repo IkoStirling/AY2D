@@ -111,6 +111,11 @@ add_executable(${TEST_TARGET}
     # (AtlasDesc + path). design.md §13.18. Reuses
     # AYTileSamplerUV::tileUV; no new UV derivation logic.
     Test_SpriteSheet.cpp
+    # P3H.3 in-AY2D tests - foreachTilemapView read-only
+    # visitor (TilemapEntryView; no Entry& exposure, no
+    # resource field). design.md §13.19. The visitor is
+    # header-inline on World2D.
+    Test_ForeachTilemapView.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
