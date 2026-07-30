@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 5 ship (collision types + adapter + flagsAtRaw Empty fix; §13.13). Cross-module PRs still deferred per §4.2.1; pre-flight retractions from §13.PF landed in Phase 5 code.
-> **Version**: v0.1.11 (2026-07-30).
+> **Status**: P3H.2 ship (World2DSnapshot value type + TilemapEntryView; TilemapBinding deprecated; §13.14). Phase 5 + §13.PF pre-flight landed earlier this commit chain.
+> **Version**: v0.1.12 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2209,6 +2209,80 @@ budget) untouched.
     AYPhysics maintainer.
 - Slice 2 (P3H.2): ship `World2DSnapshot` + `TilemapEntryView`;
   deprecate `TilemapBinding`.
+- Slice 3 (P3G.2a): wire `maxChunksCpuSoftCap` (new field) +
+  `chunk_io_residency_reject` counter.
+- Slice 4 (P3G.1 partial): counter scaffolding +
+  `AY_LOG_WARN` on non-LRU `setBudget`.
+- Slice 5 (P3D.2): ship `Tilemap::aabbOfCell` centered on
+  `cellToWorld` per R-3E.5.
+- Slice 6 (P3H.1): ship `SpriteSheet = AtlasDesc + path`.
+- Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+
+---
+
+### 13.14 v0.1.12 — 2026-07-30 (P3H.2 World2DSnapshot value type — in-AY2D)
+
+**Phase**: P3H.2 (in-AY2D scope only — read-only value-type
+debug introspection surface; replaces the `IWorld2DDebug`
+vtable proposal with a plain value type so `World2D` stays
+POD-ish).
+
+**Locked changes** (per §13.PF C5 reshape):
+
+- §3 / §13.PF C5: `include/AY2D/AYWorld2DSnapshot.h` ships
+  `TilemapEntryView` (POD: `TilemapHandle handle; uint32_t
+  layer; uint32_t sortingKey`) — **no `resource` field** because
+  `World2D::Entry::resource` is always `nullptr` at HEAD (the
+  `.aytilemap` loader PR is a cross-module concern per §4.2.1)
+  and exposing it as `IAYTilemap*` to callers would hand out a
+  dangling pointer to an incomplete type.
+- §13.PF C5: `World2DSnapshot` is a plain value type (no
+  vtable, no interface inheritance). Built via
+  `World2DSnapshot::build(const World2D&)` — copies
+  `entries` (as `TilemapEntryView`s) and `counters.snapshot()`
+  (relaxed atomic load per §10.1.1 + F-8).
+- §13.PF C5: `TilemapBinding` (`include/AY2D/AYWorld2D.h:44-48`)
+  is **deprecated** via `[[deprecated("... use TilemapEntryView
+  via World2DSnapshot")]]`. The type stays present for additive
+  compatibility; a future PR may remove it once grep confirms
+  zero consumers (none exist today).
+- `include/AY2D.h` umbrella adds `AYWorld2DSnapshot.h`.
+- `CMakeLists.txt` adds `src/AYWorld2DSnapshot.cpp` to `SRC_FILES`.
+- `unittest/CMakeLists.txt` adds `Test_World2DSnapshot.cpp`.
+
+**Tests** (`unittest/Test_World2DSnapshot.cpp` — 5 cases / 21 CHECK):
+
+1. `EmptyWorldProducesEmptyEntries` — empty `World2D` →
+   `size()==0`, `entries` empty, `counters` zero-initialised.
+2. `SizeMatchesWorldSize` — `World2DSnapshot::size()` matches
+   `World2D::size()`; mutating the world after `build()` does
+   NOT affect the snapshot.
+3. `CountersSnapshotIsStableAcrossMutations` — the counters
+   snapshot is a stable copy; bumping a counter post-build does
+   NOT mutate the snapshot.
+4. `EntryViewExposesHandleLayerSortingKey` — `TilemapEntryView`
+   carries `handle` (id + generation), `layer`, `sortingKey`.
+5. `TilemapBindingStillCompilesForBackcompat` — `TilemapBinding`
+   still exists and has the expected field layout (sizeof +
+   first-field offset check).
+
+All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G +
+Phase 5) untouched. Deprecation warning C4996 fires on case 5
+(use of `TilemapBinding`); the test deliberately exercises the
+deprecation path so a future PR that removes the attribute is
+caught at CI. The build keeps `/wd4200` only — C4996 is a
+warning, not an error, so the deprecated type stays usable.
+
+- §11.2: bgfx-leak guard stays green. `AYWorld2DSnapshot.h`
+  includes `<cstdint>` + `<vector>` + `AY2DCounters.h` +
+  `AYWorld2D.h` — all bgfx-clean.
+- §13.14: This changelog entry. Front-matter bumped to v0.1.12.
+  Total tests: **19 TEST_SUITE / 559 CHECK assertions PASS** (was
+  18 / 538 at v0.1.11; +1 suite, +21 CHECK).
+
+**Open follow-ups** (unchanged from §13.13 + §13.PF):
+
 - Slice 3 (P3G.2a): wire `maxChunksCpuSoftCap` (new field) +
   `chunk_io_residency_reject` counter.
 - Slice 4 (P3G.1 partial): counter scaffolding +

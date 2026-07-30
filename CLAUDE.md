@@ -1,19 +1,19 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.11, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.13 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.12, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.14 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — Phase 5 in-AY2D collision types + adapter (2026-07-30)
+## 当前状态 — P3H.2 in-AY2D World2DSnapshot value type (2026-07-30)
 
-- `design.md` 是权威设计（v0.1.11 + audit F-1..F-19 + Changelog §13.1..§13.13 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G）。代码与 design.md 不一致时，design.md 优先。
-- 子模块 HEAD = Phase 5：§8.1 全套类型 ship — `Ray2D` / `RaycastHit2D` / `ITileCollisionQuery` / `TilemapCollisionQueryAdapter`；`Tilemap::flagsAtRaw` 修复为返回 `CollisionFlags::Empty`（1<<6）而非 `None`（0）（§13.PF C6 回归 + 文档一致）。Default `isBlocked = flagsAt(c) != Empty`（§13.PF C6 公式修复）。`raycast` 占位 always-miss（§11 Phase 5 row exit gate）。
-- `unittest/` 现在有 **18** 个 test 文件 / **538** CHECK assertions PASS（Phase 3G 17/516 → Phase 5 18/538 = +1 suite, +22 CHECK）。新增 `Test_TileCollisionQuery` 走真 wired delta（7 case：pointAt parametrics / RaycastHit2D 默认 / adapter flagsAt + isBlocked / flagsAtRaw Empty 回归 / raycast always-miss / TileCoord round-trip / OOB cell）。
-- 锁行为（§18.6 / R-3G.1..7 + §13.PF）：**R-3G.1** non-LRU policy = no-op + false（active lock；Distance/TimeWindow 留给 Phase 4 streaming 跨模块 PR，§13.PF clarification）；**R-3G.4** `maxChunksResident` 是 GPU residency 撞 §4.2.1（cross-module PR to RenderResourceManager，Phase 6）；§13.PF C6 `flagsAtRaw` body MUST return `Empty` (1<<6) not `None` (0)；§13.PF C8 偏差 shipped interface 用 `TileCoord` 而非 `IVector2`；§11.2 Phase 5 row exit gate = "Interface compiles; unit tests for cell lookup"（已 ship）。
-- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G 任何已有测试（new headers 是 append-only，flagsAtRaw 修复由 `Test_TileCollisionQuery::FlagsAtRawReturnsEmptyNotNone` 覆盖）。
+- `design.md` 是权威设计（v0.1.12 + audit F-1..F-19 + Changelog §13.1..§13.14 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G）。代码与 design.md 不一致时，design.md 优先。
+- 子模块 HEAD = P3H.2：`TilemapEntryView` POD（handle + layer + sortingKey，无 resource field）+ `World2DSnapshot` value type + `World2DSnapshot::build(const World2D&)`。`TilemapBinding` 标记 `[[deprecated]]`（§13.PF C5 reshape —— 用 value type 替代原计划的 `IWorld2DDebug` vtable，保持 `World2D` POD-ish）。
+- `unittest/` 现在有 **19** 个 test 文件 / **559** CHECK assertions PASS（Phase 5 18/538 → P3H.2 19/559 = +1 suite, +21 CHECK）。新增 `Test_World2DSnapshot` 走真 wired delta（5 case：empty / size matches world / counters stable / entry view fields / TilemapBinding backcompat）。
+- 锁行为（§18.6 / R-3G.1..7 + §13.PF）：**R-3G.1** non-LRU policy = no-op + false（active lock；Distance/TimeWindow 留给 Phase 4 streaming 跨模块 PR，§13.PF clarification）；**R-3G.4** `maxChunksResident` 是 GPU residency 撞 §4.2.1（cross-module PR to RenderResourceManager，Phase 6）；§13.PF C5 `TilemapBinding` deprecated；§13.PF C6 `flagsAtRaw` body returns `Empty` (1<<6) not `None` (0)（Phase 5 修复 + 测试覆盖）；§13.PF C8 `TileCoord` deviation shipped interface 用 `TileCoord` 而非 `IVector2`；§11.2 Phase 5 row exit gate = "Interface compiles; unit tests for cell lookup"（已 ship）。
+- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G / Phase 5 任何已有测试。
 - **R-10 lock 守住**：AY2D 没有 AYAnimation include / link。
-- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath)` 持续生效；Phase 5 新 `AYTileCollision.h` + `AYTilemapCollisionAdapter.h` 都引 `aymath/MathTypes.h`（公开的 AYMath 头，非 bgfx）。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（19 public headers scanned, 0 leaks；新 `AYTilemapCollisionAdapter.h` 是 `<cstdint>` + `aymath/MathTypes.h` + `AYTileCollision.h` + `AYTilemap.h`，纯 math+std）。
-- 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity / AYShader / AYPhysics maintainer 拥有各自的 merge gate。Phase 5 的 raycast walker / blocked-tile-id-set 由 AYPhysics 跨模块 PR 接手。
+- `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath)` 持续生效。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（20 public headers scanned, 0 leaks；新 `AYWorld2DSnapshot.h` 是 `<cstdint>` + `<vector>` + `AY2DCounters.h` + `AYWorld2D.h`，纯 std+existing）。
+- 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity / AYShader / AYPhysics maintainer 拥有各自的 merge gate。P3H.2 不开任何跨模块 PR（vtable-free 设计）。
 
 ## 重要规则
 

@@ -172,4 +172,4 @@ else()
         "skipping enable_testing/add_subdirectory for Phase 0.")
 endif()
 
-message(STATUS "AY2D v0.1.11 (Phase 5 collision types + adapter) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
+message(STATUS "AY2D v0.1.12 (P3H.2 World2DSnapshot value type) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
