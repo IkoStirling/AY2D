@@ -106,6 +106,25 @@ struct Ay2DCounters {
     // by `resetAll`, NOT by `resetPerFrame`.
     std::atomic<uint64_t> chunk_io_residency_reject = 0;
 
+    // P3G.1 partial (§13.16): counter scaffolding for the
+    // Distance / TimeWindow eviction policies. Both stay at 0
+    // today because the policies are deferred to the cross-
+    // module Phase 4 streaming PR (R-3G.1 lock intact); the
+    // fields exist so the future PR picks up the counter shape
+    // without a breaking change. Cumulative, resetAll only —
+    // same R-3G.2 discipline as `chunk_io_reject`.
+    std::atomic<uint64_t> evictions_distance    = 0;
+    std::atomic<uint64_t> evictions_time_window = 0;
+
+    // P3G.1 partial (§13.16): also wire an `evictions_lru`
+    // counter (cumulative) bumped inside `evictIfNeeded` /
+    // `setCapacity` so the existing LRU eviction path produces
+    // a visible telemetry signal. Before P3G.1 the only proxy
+    // was `chunk_resident_count` (gauge) which went down on
+    // eviction; the cumulative form is what `setBudget`
+    // reporting / dashboards want.
+    std::atomic<uint64_t> evictions_lru        = 0;
+
     // Cheap non-atomic snapshot helper. Returns a copy of the
     // current values; the snapshot is not internally consistent
     // across fields (each field is a relaxed load) but is
@@ -125,6 +144,12 @@ struct Ay2DCounters {
         uint64_t chunk_io_reject;
         // P3G.2a (§13.15): soft-cap eviction failure counter.
         uint64_t chunk_io_residency_reject;
+        // P3G.1 partial (§13.16): Distance / TimeWindow eviction
+        // counters (scaffolding; always 0 today per R-3G.1).
+        uint64_t evictions_distance;
+        uint64_t evictions_time_window;
+        // P3G.1 partial: cumulative LRU eviction counter.
+        uint64_t evictions_lru;
     };
 
     [[nodiscard]] Snapshot snapshot() const noexcept {
@@ -143,6 +168,10 @@ struct Ay2DCounters {
             chunk_io_reject.load(std::memory_order_relaxed),
             // P3G.2a.
             chunk_io_residency_reject.load(std::memory_order_relaxed),
+            // P3G.1 partial.
+            evictions_distance.load(std::memory_order_relaxed),
+            evictions_time_window.load(std::memory_order_relaxed),
+            evictions_lru.load(std::memory_order_relaxed),
         };
     }
 
@@ -166,6 +195,11 @@ struct Ay2DCounters {
         // (R-3G.2 discipline extended to soft-cap eviction
         // failures); reset by resetAll only.
         chunk_io_residency_reject.store(0, std::memory_order_relaxed);
+        // P3G.1 partial: Distance / TimeWindow eviction
+        // counters; cumulative, resetAll only.
+        evictions_distance.store(0, std::memory_order_relaxed);
+        evictions_time_window.store(0, std::memory_order_relaxed);
+        evictions_lru.store(0, std::memory_order_relaxed);
     }
 
     // Reset the per-frame fields only (chunk_io_* and

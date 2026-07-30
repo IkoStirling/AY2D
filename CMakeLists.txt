@@ -93,7 +93,13 @@ target_include_directories(${MODULE_NAME} PUBLIC
 #     `Float3x3` / `FVector2` through the AY2D umbrella), AND
 #   * the AYMath PUBLIC include path (`aymath/MathTypes.h`) so that
 #     AY2D's own .cpp files can include the math header.
-target_link_libraries(${MODULE_NAME} PUBLIC AYMath)
+#
+# P3G.1 partial (slice 4): also PUBLIC-link `AYLog` so the
+# non-LRU `setBudget` warning can fire via `ayt::log::warn`.
+# AYLog is in the §2.3 allowed-deps list (P3D sibling AYResource
+# already uses it for "Invalid source path" + "Skeleton v1
+# header truncated" warnings; mirrors the engine-wide pattern).
+target_link_libraries(${MODULE_NAME} PUBLIC AYMath AYLog)
 
 # The static library is now consumed by both production callers AND
 # AY2D_Tests. The guard target is wired here so a `cmake --build .`

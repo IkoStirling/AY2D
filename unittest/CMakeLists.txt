@@ -97,6 +97,12 @@ add_executable(${TEST_TARGET}
     # chunk_io_residency_reject counter. design.md §13.15.
     # No new AYMath dep; counter appended to Ay2DCounters.
     Test_CpuSoftCap.cpp
+    # P3G.1 partial in-AY2D tests - counter scaffolding
+    # (evictions_distance / _time_window / _lru) +
+    # non-LRU setBudget log warning. design.md §13.16.
+    # R-3G.1 lock intact; full Distance / TimeWindow wire
+    # stays deferred to the cross-module Phase 4 PR.
+    Test_BudgetPolicyCounters.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

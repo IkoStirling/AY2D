@@ -17,6 +17,8 @@
 #include <chrono>
 #include <utility>
 
+#include "aylog/Logger.h"
+
 namespace ayt::ay2d {
 
 void InMemoryTilemapChunkSource::touch(MapKey key) noexcept {
@@ -111,14 +113,20 @@ bool InMemoryTilemapChunkSource::put(ChunkCoord coord, ChunkData data) noexcept 
 void InMemoryTilemapChunkSource::evictIfNeeded() noexcept {
     if (_capacity == 0) return;
     // Drop from the front (least-recently-used).
+    uint32_t evicted = 0;
     while (_cache.size() > _capacity) {
         const MapKey key = packKey(_cache.front().first);
         _cache.erase(_cache.begin());
         _index.erase(key);
+        ++evicted;
     }
-    // Phase 3 telemetry: refresh the resident count after eviction
-    // so a post-put() snapshot reflects the cached state, not the
-    // pre-eviction state.
+    // P3G.1 partial (§13.16): cumulative LRU eviction counter.
+    // Bumped per evicted entry; same R-3G.2 discipline (resetAll
+    // only). The gauge `chunk_resident_count` is refreshed as
+    // before so a post-put() snapshot reflects the cached state.
+    if (evicted > 0) {
+        _counters.evictions_lru.fetch_add(evicted, std::memory_order_relaxed);
+    }
     _counters.chunk_resident_count.store(
         static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
 }
@@ -238,10 +246,16 @@ void InMemoryTilemapChunkSource::setCapacity(uint32_t capacity) noexcept {
         // same logic as `evictIfNeeded` but called explicitly so
         // the cap change takes effect without waiting on the next
         // `putBack`.
+        uint32_t evicted = 0;
         while (_cache.size() > _capacity) {
             const MapKey k = packKey(_cache.front().first);
             _cache.erase(_cache.begin());
             _index.erase(k);
+            ++evicted;
+        }
+        // P3G.1 partial: bump cumulative LRU eviction counter.
+        if (evicted > 0) {
+            _counters.evictions_lru.fetch_add(evicted, std::memory_order_relaxed);
         }
         _counters.chunk_resident_count.store(
             static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
@@ -280,10 +294,12 @@ void InMemoryTilemapChunkSource::evictDownTo(uint32_t target) noexcept {
     }
     // Avoid `target == 0` erasing all (we want at least 1
     // resident for stable iterator behaviour).
+    uint32_t evicted = 0;
     while (_cache.size() > target && _cache.size() > 1) {
         const MapKey k = packKey(_cache.front().first);
         _cache.erase(_cache.begin());
         _index.erase(k);
+        ++evicted;
     }
     // Edge case: if `target == 0` AND `_capacity == 0` (the
     // ctor default unlimited), drain entirely.
@@ -291,6 +307,12 @@ void InMemoryTilemapChunkSource::evictDownTo(uint32_t target) noexcept {
         const MapKey k = packKey(_cache.front().first);
         _cache.erase(_cache.begin());
         _index.erase(k);
+        ++evicted;
+    }
+    // P3G.1 partial: bump cumulative LRU eviction counter
+    // (soft-cap trim is still an LRU eviction in P3G.2a).
+    if (evicted > 0) {
+        _counters.evictions_lru.fetch_add(evicted, std::memory_order_relaxed);
     }
     _counters.chunk_resident_count.store(
         static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
@@ -308,7 +330,27 @@ void InMemoryTilemapChunkSource::setMaxIoBytesPerSec(uint64_t bytesPerSec) noexc
 bool InMemoryTilemapChunkSource::setBudget(const TilemapBudget& b) noexcept {
     // R-3G.4: policy == LRU is the only one wired. Distance /
     // TimeWindow return false (no-op; R-3G.1).
-    if (b.eviction != EvictionPolicy::LRU) return false;
+    if (b.eviction != EvictionPolicy::LRU) {
+        // P3G.1 partial (§13.16): log a warning so the caller
+        // can diagnose a non-functional budget shape. The
+        // Distance / TimeWindow policies need a camera
+        // reference (Distance) and per-entry access timestamps
+        // (TimeWindow); neither is in InMemoryTilemapChunkSource
+        // today. The cross-module Phase 4 streaming PR
+        // (§4.2.1) owns the real implementation. Counters
+        // `evictions_distance` / `evictions_time_window` are
+        // scaffolding (always 0) and stay at 0 across this
+        // warning path.
+        const char* policyName =
+            (b.eviction == EvictionPolicy::Distance)   ? "Distance"   :
+            (b.eviction == EvictionPolicy::TimeWindow) ? "TimeWindow" : "Unknown";
+        ayt::log::warn(
+            "[AY2D::InMemoryTilemapChunkSource::setBudget] non-LRU policy '%s' requested; "
+            "full wiring deferred to cross-module Phase 4 streaming PR per R-3G.1 (camera + timestamp). "
+            "Returning false; previous budget remains in effect.",
+            policyName);
+        return false;
+    }
 
     setCapacity(b.maxChunksLoaded);
     setMaxIoBytesPerSec(b.maxIoBytesPerSec);
