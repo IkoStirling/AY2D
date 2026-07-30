@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3H.2 ship (World2DSnapshot value type + TilemapEntryView; TilemapBinding deprecated; §13.14). Phase 5 + §13.PF pre-flight landed earlier this commit chain.
-> **Version**: v0.1.12 (2026-07-30).
+> **Status**: P3G.2a ship (in-AY2D CPU soft cap maxChunksCpuSoftCap + chunk_io_residency_reject counter; §13.15). Phase 5 + P3H.2 + §13.PF pre-flight all landed in this commit chain.
+> **Version**: v0.1.13 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2292,6 +2292,80 @@ warning, not an error, so the deprecated type stays usable.
 - Slice 6 (P3H.1): ship `SpriteSheet = AtlasDesc + path`.
 - Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
 - Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+
+---
+
+### 13.15 v0.1.13 — 2026-07-30 (P3G.2a CPU soft cap — in-AY2D)
+
+**Phase**: P3G.2a (in-AY2D scope only — second-layer CPU
+soft cap wired; resolves the §13.PF C2 field split).
+
+**Locked changes** (per §13.PF C2 reshape):
+
+- §18.1 / §13.PF C2: `TilemapBudget` gains a new field
+  `maxChunksCpuSoftCap` (uint32_t, default `0` = disabled)
+  between `maxChunksLoaded` and `maxChunksResident`. The
+  field set is now a 3-tier residency model:
+  - `maxChunksLoaded` — hard cap (in-AY2D P3A; wired to
+    `setCapacity`).
+  - `maxChunksCpuSoftCap` — in-AY2D soft cap, **P3G.2a ship**.
+    Evict-down-to when `setBudget` lowers it below the cache
+    size; `0` = disabled; non-zero AND `>= maxChunksLoaded`
+    is a no-op (hard cap rules).
+  - `maxChunksResident` — GPU residency ceiling, R-3G.4.
+    Cross-module PR to `RenderResourceManager`. Not wired in
+    this slice.
+- §14.1: `Ay2DCounters` gains an 11th field
+  `chunk_io_residency_reject` (std::atomic<uint64_t>,
+  cumulative, reset by `resetAll` only — same discipline as
+  `chunk_io_reject` per R-3G.2 extended to soft-cap eviction
+  failures). The pin set that would bump this counter lands
+  with Phase 4 streaming; today the counter stays at 0.
+- §18.1: `InMemoryTilemapChunkSource` gains
+  `setMaxChunksCpuSoftCap(uint32_t)` public mutator +
+  `evictDownTo(uint32_t)` private helper. `setBudget(b)`
+  routes through the new mutator so trim logic lives in
+  one place.
+- §18.1: `TilemapBudget` `budget()` getter now reflects the
+  live soft cap (was previously unavailable).
+
+**Tests** (`unittest/Test_CpuSoftCap.cpp` — 4 cases / ~14 CHECK):
+
+1. `SetSoftCapTrimsBelowHardCap` — hard cap 10, 8 puts, then
+   `setMaxChunksCpuSoftCap(3)` → cache trimmed to 3 (LRU-front
+   evicted); the 3 MRU-back entries remain.
+2. `SoftCapAboveHardCapIsNoOp` — hard cap 5, 8 puts (cache
+   = 5), then `setMaxChunksCpuSoftCap(10)` → no-op (soft cap
+   cannot exceed hard cap).
+3. `SetBudgetAppliesSoftCapAndRateGate` — `setBudget({
+   maxChunksLoaded=8, maxChunksCpuSoftCap=2,
+   maxIoBytesPerSec=0 })` → 6 puts fill to 6, explicit
+   `setMaxChunksCpuSoftCap(2)` re-apply trims to 2.
+4. `ResidencyRejectCounterResetsByResetAllOnly` — field
+   exists; cumulative discipline verified via `resetPerFrame`
+   no-op + `resetAll` zero.
+
+All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G +
+Phase 5 + P3H.2) untouched.
+
+- §11.2: bgfx-leak guard stays green. No new public headers.
+- §13.15: This changelog entry. Front-matter bumped to v0.1.13.
+  Total tests: **20 TEST_SUITE / 600 CHECK assertions PASS** (was
+  19 / 559 at v0.1.12; +1 suite, +41 CHECK — extra CHECKs came
+  from per-iteration put assertions inside the test cases, not
+  a single case = single CHECK).
+
+**Open follow-ups** (unchanged from §13.14 + §13.PF):
+
+- Slice 4 (P3G.1 partial): counter scaffolding +
+  `AY_LOG_WARN` on non-LRU `setBudget`.
+- Slice 5 (P3D.2): ship `Tilemap::aabbOfCell` centered on
+  `cellToWorld` per R-3E.5.
+- Slice 6 (P3H.1): ship `SpriteSheet = AtlasDesc + path`.
+- Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+- Phase 4 streaming: pin set lands; soft-cap eviction
+  failure path bumps `chunk_io_residency_reject`.
 
 ---
 
