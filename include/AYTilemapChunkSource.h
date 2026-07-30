@@ -50,6 +50,34 @@ public:
     // Best-effort cancel of a previously issued request. No-op when
     // the request has already completed or the handle is invalid.
     virtual void cancelChunk(ChunkRequestHandle handle) noexcept = 0;
+
+    // P3I.2 / §13.21 + §18.4: drop every resident chunk + cancel
+    // every pending load. Used by `World2D::removeTilemap` when the
+    // owning tilemap goes away, so the chunk source's resident set
+    // does not leak chunks that are now unreachable.
+    //
+    // The default in-AY2D chunk-source model is **one source per
+    // tilemap** (§18.4). `InMemoryTilemapChunkSource::packKey` is
+    // 2D-only, so all of the source's chunks logically belong to
+    // the single tilemap. A purge is therefore a `purge all`
+    // operation; there is no per-tilemap filter.
+    //
+    // Implementations MUST reuse their normal eviction release path
+    // (`evictDownTo(0)` for InMemory) instead of `clear()`-style
+    // shortcuts, so the bgfx-leak guard stays green and the
+    // `evictions_lru` counter advances exactly once per evicted
+    // chunk (§13.21 L-3I-3).
+    //
+    // Pending (not-yet-resident) requests must be cancelled but
+    // do NOT count toward `evictions_lru`: they never occupied an
+    // LRU slot (§13.21 L-3I-4).
+    //
+    // Pure virtual: Gate G2 verified no external implementer exists
+    // outside `AY2D/`, so adding `= 0` does not break a §4.2.1-
+    // locked module. If a future cross-module implementer ships
+    // without overriding this, the build will fail at the
+    // implementer side, which is the desired loud failure mode.
+    virtual void purgeChunks() noexcept = 0;
 };
 
 } // namespace ayt::ay2d

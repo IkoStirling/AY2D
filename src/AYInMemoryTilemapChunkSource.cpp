@@ -288,22 +288,20 @@ void InMemoryTilemapChunkSource::evictDownTo(uint32_t target) noexcept {
     // home of "blocked eviction" tracking; today no pins
     // exist so `chunk_io_residency_reject` stays at 0 in the
     // trim path.
-    if (target == 0) {
-        // 0 = "trim everything" — drain the cache.
-        target = 1;  // sentinel: while-loop checks `size > target`
-    }
-    // Avoid `target == 0` erasing all (we want at least 1
-    // resident for stable iterator behaviour).
+    //
+    // P3I.2 / §13.21 amendment: `target == 0` is interpreted as
+    // "drain everything" regardless of `_capacity`. The
+    // pre-P3I.2 sentinel-of-one behaviour would leave one chunk
+    // behind whenever `purgeChunks` (the only caller that uses
+    // `target == 0` today) tried to drain; the resulting
+    // `evictions_lru` would under-count by 1, breaking the
+    // §13.21 L-3I-4 invariant that one purge equals one bump
+    // per previously-resident chunk. P3G.2a callers reach this
+    // function with `softCap > 0`, so the sentinel path is
+    // preserved for the non-purge case.
+    const uint32_t sentinelTarget = target;  // 0 means "drain everything"
     uint32_t evicted = 0;
-    while (_cache.size() > target && _cache.size() > 1) {
-        const MapKey k = packKey(_cache.front().first);
-        _cache.erase(_cache.begin());
-        _index.erase(k);
-        ++evicted;
-    }
-    // Edge case: if `target == 0` AND `_capacity == 0` (the
-    // ctor default unlimited), drain entirely.
-    if (target == 1 && _capacity == 0 && _cache.size() == 1) {
+    while (_cache.size() > sentinelTarget) {
         const MapKey k = packKey(_cache.front().first);
         _cache.erase(_cache.begin());
         _index.erase(k);
@@ -316,6 +314,35 @@ void InMemoryTilemapChunkSource::evictDownTo(uint32_t target) noexcept {
     }
     _counters.chunk_resident_count.store(
         static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
+}
+
+void InMemoryTilemapChunkSource::cancelAllPending() noexcept {
+    // P3I.2 / §13.21 L-3I-4: clear the pending-request map. No
+    // counter bump. The pending requests never occupied an LRU
+    // slot, so cancelling them is not an eviction — they were
+    // never resident. Idempotent (clearing an empty map is a
+    // no-op).
+    _pending.clear();
+}
+
+void InMemoryTilemapChunkSource::purgeChunks() noexcept {
+    // P3I.2 / §13.21: drop every resident chunk + cancel every
+    // pending load. Called by `World2D::removeTilemap` when the
+    // owning tilemap goes away.
+    //
+    // Step 1: cancel pending requests (no eviction counter bump;
+    // L-3I-4). Step 2: drain the cache via `evictDownTo(0)`.
+    // `evictDownTo(0)` with `_capacity == 0` (the unlimited
+    // ctor default) drains fully per its sentinel logic, so we
+    // do NOT need a separate `clear()` shortcut here — going
+    // through `evictDownTo` keeps the bgfx-leak guard green
+    // (L-3I-3) and bumps `evictions_lru` exactly once per
+    // resident chunk.
+    //
+    // Idempotent: a second consecutive call sees an empty cache
+    // and an empty pending map and is a no-op.
+    cancelAllPending();
+    evictDownTo(0);
 }
 
 void InMemoryTilemapChunkSource::setMaxIoBytesPerSec(uint64_t bytesPerSec) noexcept {

@@ -65,6 +65,16 @@ public:
     [[nodiscard]] bool               isResident(ChunkCoord coord) const noexcept override;
     void                            cancelChunk(ChunkRequestHandle handle) noexcept override;
 
+    // P3I.2 / §13.21: drop every resident chunk + cancel every
+    // pending load. Reuses `evictDownTo(0)` so the release path is
+    // identical to normal capacity-driven eviction (L-3I-3 keeps
+    // the bgfx-leak guard green; `evictions_lru` advances once
+    // per evicted chunk). Pending cancellation does NOT bump
+    // `evictions_lru` (L-3I-4) because pending requests never
+    // occupied an LRU slot. Idempotent: a second consecutive
+    // call is a no-op.
+    void purgeChunks() noexcept override;
+
     // LRU helpers exposed for implementation reuse. These let
     // AYTilemap.cpp (and .cpp-side test handlers) touch a node without
     // keeping the lookup map duplicated. They are class members rather
@@ -221,6 +231,13 @@ private:
     // `chunk_io_residency_reject` per blocked attempt (today
     // the pin set is empty so the bump stays at 0).
     void evictDownTo(uint32_t target) noexcept;
+
+    // P3I.2 / §13.21 (private helper of `purgeChunks`): cancel
+    // every pending request by clearing the `_pending` map. Does
+    // NOT touch the cache; does NOT bump `evictions_lru` because
+    // pending requests never occupied an LRU slot (L-3I-4).
+    // Idempotent: clearing an empty map is a no-op.
+    void cancelAllPending() noexcept;
 };
 
 } // namespace ayt::ay2d

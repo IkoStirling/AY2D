@@ -71,6 +71,18 @@ struct [[deprecated("TilemapBinding is dead code; use TilemapEntryView via World
 // cross-module PR in design.md §4.2.1.
 class IAYTilemap;
 
+// P3I.2 / §13.21: forward-declared so `Entry::chunkSource` can be
+// a non-owning pointer. The chunk-source binding lives in the
+// World2D-side metadata (this struct), NOT in `Tilemap` itself,
+// because today `World2D::Entry` is the only registry that
+// carries per-tilemap identity (`IAYTilemap* resource` is the
+// future loader hook). The `Tilemap` struct (AYTilemap.h) holds
+// only the tile-id array + animation table; it has no
+// `chunkSource` accessor. Cross-module PR to AYResource will
+// own the resource-side binding; this declaration only describes
+// where AY2D stores the chunk source pointer today.
+class ITilemapChunkSource;
+
 struct World2D {
     // Monotonically increasing counter. Bumped on every
     // addTilemap / removeTilemap / swapTilemap call, AND when a
@@ -85,10 +97,17 @@ struct World2D {
     // caps "instantiated tilemaps per world" at a few hundred —
     // beyond that, Phase 4 streaming replaces this with a hash map.
     struct Entry {
-        TilemapHandle       handle;
-        uint32_t            layer = 0;
-        uint32_t            sortingKey = 0;
-        IAYTilemap*         resource = nullptr;  // Phase 3+ root ptr (owning lifetime managed by AYResource)
+        TilemapHandle          handle;
+        uint32_t               layer = 0;
+        uint32_t               sortingKey = 0;
+        IAYTilemap*            resource    = nullptr;  // Phase 3+ root ptr (owning lifetime managed by AYResource)
+        // P3I.2 / §13.21 + §18.4: non-owning chunk source pointer.
+        // nullptr means either "no chunk source bound" (legacy
+        // 2-arg addTilemap) or "future multi-tilemap shared source"
+        // (Phase 4 streaming, §18.4 future hook). When removeTilemap
+        // finds this non-null, it calls purgeChunks() BEFORE
+        // erasing the entry (L-3I-5 ordering lock).
+        ITilemapChunkSource*   chunkSource = nullptr;
     };
 
     std::vector<Entry> entries;
@@ -107,6 +126,18 @@ struct World2D {
     // it (Phase 3+ cross-module PR).
     [[nodiscard]] TilemapHandle addTilemap(uint32_t layer,
                                            uint32_t sortingKey) noexcept;
+
+    // P3I.2 / §13.21: 3-arg overload that also binds a chunk
+    // source. The 2-arg overload above is preserved (and now
+    // delegates here with `nullptr`), so existing callers / tests
+    // are not touched. The chunk source pointer is non-owning;
+    // the caller (typically a system / Scene loader) is
+    // responsible for keeping the source alive for as long as the
+    // entry exists. `removeTilemap` will call `purgeChunks()` on
+    // the bound source (L-3I-5) before erasing the entry.
+    [[nodiscard]] TilemapHandle addTilemap(uint32_t layer,
+                                           uint32_t sortingKey,
+                                           ITilemapChunkSource* chunkSource) noexcept;
 
     // Remove a tilemap by handle. Returns true iff `handle` matched
     // an entry; false if the handle is invalid or the generation
@@ -176,6 +207,14 @@ private:
     // Remove the entry whose handle matches exactly. Returns the
     // iterator + a bool signaling whether anything was removed.
     bool removeEntryByHandle(TilemapHandle handle);
+
+    // P3I.2 / §13.21: find the entry by exact handle match (id +
+    // generation). Used by `removeTilemap` to read `chunkSource`
+    // BEFORE the entry is erased (L-3I-5: purge must happen while
+    // the entry is still alive). Returns nullptr when not found
+    // or when the handle has been invalidated by a prior
+    // remove/swap (generation bits don't match).
+    [[nodiscard]] Entry* findEntryByHandle(TilemapHandle handle) noexcept;
 };
 
 } // namespace ayt::ay2d

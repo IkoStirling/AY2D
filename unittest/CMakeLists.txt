@@ -121,6 +121,12 @@ add_executable(${TEST_TARGET}
     # Consumer side (AYPhysics isBlocked) stays cross-module
     # per §4.2.1. No new deps.
     Test_TilemapBlockedTileIds.cpp
+    # P3I.2 in-AY2D tests - removeTilemap chunk-source purge
+    # (§13.21 + §18.4 one-source-per-tilemap). LRU-coherent
+    # counter bumps via evictDownTo(0); pending cancel does
+    # NOT inflate evictions_lru (L-3I-4). swapTilemap stays
+    # no-purge (§13.15).
+    Test_World2DRemoveTilemapPurge.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

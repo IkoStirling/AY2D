@@ -15,12 +15,21 @@
 // once AYResource ships the IAYTilemap interface.
 
 #include "AYWorld2D.h"
+#include "AYTilemapChunkSource.h"  // P3I.2: need the full type to call purgeChunks()
 
 #include <algorithm>
 
 namespace ayt::ay2d {
 
 TilemapHandle World2D::addTilemap(uint32_t layer, uint32_t sortingKey) noexcept {
+    // Legacy 2-arg overload: delegate with `nullptr`. The 3-arg
+    // overload below is the canonical add path (P3I.2 / §13.21).
+    return addTilemap(layer, sortingKey, nullptr);
+}
+
+TilemapHandle World2D::addTilemap(uint32_t layer,
+                                  uint32_t sortingKey,
+                                  ITilemapChunkSource* chunkSource) noexcept {
     Entry e;
     e.handle.id         = _nextTilemapId++;
     // Phase 3: each add advances a monotonic generation so a
@@ -31,6 +40,11 @@ TilemapHandle World2D::addTilemap(uint32_t layer, uint32_t sortingKey) noexcept 
     e.layer             = layer;
     e.sortingKey        = sortingKey;
     e.resource          = nullptr;
+    // P3I.2 / §13.21: bind the chunk source pointer (non-owning).
+    // `nullptr` means "no source bound" — the entry is still
+    // valid; `removeTilemap` just skips the purge step in that
+    // case.
+    e.chunkSource       = chunkSource;
     entries.push_back(std::move(e));
     bumpEpoch();
     // Phase 3C (§14.2): in-world gauge bump on successful add.
@@ -60,6 +74,23 @@ bool World2D::removeEntryByHandle(TilemapHandle handle) {
 }
 
 bool World2D::removeTilemap(TilemapHandle handle) noexcept {
+    // P3I.2 / §13.21 L-3I-5 strict ordering:
+    //   1. find the entry pointer (entry still alive)
+    //   2. if it has a bound chunk source, call purgeChunks()
+    //      BEFORE erasing the entry
+    //   3. erase via removeEntryByHandle (which also bumps the
+    //      generation so any stale handle fails ABA check)
+    //   4. bumpEpoch (resourceEpoch is bumped only by the
+    //      remove, not by the purge — purge is internal to
+    //      removeTilemap; §3.4 lock)
+    //   5. saturating decrement tilemaps_in_world
+    //
+    // The previous (pre-P3I.2) body did just (3)+(4)+(5); chunk
+    // eviction did not happen at all. The new ordering preserves
+    // (3)+(4)+(5) verbatim and adds (1)+(2).
+    Entry* e = findEntryByHandle(handle);
+    if (!e) return false;
+    if (e->chunkSource) e->chunkSource->purgeChunks();
     if (removeEntryByHandle(handle)) {
         bumpEpoch();
         // Phase 3C (§14.2): decrement gauge with saturating guard
@@ -101,6 +132,20 @@ const World2D::Entry* World2D::find(TilemapHandle handle) const noexcept {
                 && e.handle.generation == handle.generation;
         });
     return it == entries.cend() ? nullptr : &(*it);
+}
+
+World2D::Entry* World2D::findEntryByHandle(TilemapHandle handle) noexcept {
+    // P3I.2 / §13.21: non-const, mutable-pointer variant used by
+    // `removeTilemap` to read `chunkSource` BEFORE erasing the
+    // entry. Mirrors the lookup logic in `find()` / `removeEntryByHandle`
+    // (exact id + generation match).
+    if (!handle.id) return nullptr;
+    auto it = std::find_if(entries.begin(), entries.end(),
+        [&](const Entry& e) {
+            return e.handle.id == handle.id
+                && e.handle.generation == handle.generation;
+        });
+    return it == entries.end() ? nullptr : &(*it);
 }
 
 World2D::Entry* World2D::find(TilemapHandle handle) noexcept {
