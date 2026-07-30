@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3G.2a ship (in-AY2D CPU soft cap maxChunksCpuSoftCap + chunk_io_residency_reject counter; §13.15). Phase 5 + P3H.2 + §13.PF pre-flight all landed in this commit chain.
-> **Version**: v0.1.13 (2026-07-30).
+> **Status**: P3G.1 partial ship (counter scaffolding for Distance / TimeWindow + evictions_lru cumulative + non-LRU log warning; §13.16). Phase 5 + P3H.2 + P3G.2a + §13.PF pre-flight all landed in this commit chain.
+> **Version**: v0.1.14 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2366,6 +2366,78 @@ Phase 5 + P3H.2) untouched.
 - Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
 - Phase 4 streaming: pin set lands; soft-cap eviction
   failure path bumps `chunk_io_residency_reject`.
+
+---
+
+### 13.16 v0.1.14 — 2026-07-30 (P3G.1 partial counter scaffolding + log warning — in-AY2D)
+
+**Phase**: P3G.1 partial (in-AY2D scope only — counter
+scaffolding + log warning; full Distance / TimeWindow wire
+stays deferred to the cross-module Phase 4 streaming PR per
+§4.2.1; R-3G.1 lock intact).
+
+**Locked changes**:
+
+- §14.1: `Ay2DCounters` gains 3 fields: `evictions_distance`
+  / `evictions_time_window` (scaffolding, always 0 today per
+  R-3G.1; the cross-module Phase 4 PR bumps them per
+  eviction) + `evictions_lru` (cumulative counter bumped
+  inside `evictIfNeeded` / `setCapacity` / `evictDownTo` —
+  one `fetch_add` per block of evictions to keep the hot
+  path cheap). All 3 follow R-3G.2 discipline (cumulative,
+  reset by `resetAll` only; `resetPerFrame` does NOT zero
+  them).
+- §18.4: `InMemoryTilemapChunkSource::setBudget` non-LRU
+  branch fires `ayt::log::warn("[AY2D::...] non-LRU policy
+  '%s' requested; full wiring deferred to cross-module Phase 4
+  streaming PR per R-3G.1 (camera + timestamp). Returning
+  false; previous budget remains in effect.", policyName)`
+  then returns false. The lock behavior is unchanged from
+  P3G; only the warning is new.
+- §2.3 allowed deps: `AYLog` is added to the AY2D PUBLIC link
+  list. AYLog was already in §2.3 allowed-deps; AYResource
+  + AYScript already use `ayt::log::warn` for similar
+  "request deferred to a future PR" diagnostics (mirrors
+  the engine-wide pattern).
+- `evictIfNeeded` / `setCapacity` / `evictDownTo` track a
+  per-call `evicted` count and `fetch_add` once per block to
+  the new `evictions_lru` counter. Behaviour change: zero.
+  The counters are pure telemetry.
+
+**Tests** (`unittest/Test_BudgetPolicyCounters.cpp` — 3 cases /
+~20 CHECK):
+
+1. `NonLRUSetBudgetReturnsFalseAndKeepsPrevious` — Distance
+   policy via `setBudget` returns false; the previous LRU
+   budget stays in effect; the scaffolding counters
+   `evictions_distance` / `evictions_time_window` stay at 0.
+2. `ScaffoldingCountersAreZeroByDefault` — three new counters
+   exist on `Snapshot`; default 0. LRU eviction bumps
+   `evictions_lru` but Distance / TimeWindow stay at 0.
+3. `LRUEvictionsCounterResetByResetAllOnly` — `evictions_lru`
+   cumulative discipline verified via `resetPerFrame` no-op
+   + `resetAll` zero.
+
+All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
++ Phase 5 + P3H.2 + P3G.2a) untouched.
+
+- §11.2: bgfx-leak guard stays green. No new public headers.
+- §13.16: This changelog entry. Front-matter bumped to v0.1.14.
+  Total tests: **21 TEST_SUITE / 627 CHECK assertions PASS** (was
+  20 / 600 at v0.1.13; +1 suite, +27 CHECK). 3× consecutive
+  green runs locked (mid-plan checkpoint per Phase 3G discipline).
+
+**Open follow-ups** (unchanged from §13.15 + §13.PF):
+
+- Slice 5 (P3D.2): ship `Tilemap::aabbOfCell` centered on
+  `cellToWorld` per R-3E.5.
+- Slice 6 (P3H.1): ship `SpriteSheet = AtlasDesc + path`.
+- Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+- Phase 4 streaming (R-3G.1): wires Distance / TimeWindow,
+  bumps `evictions_distance` / `evictions_time_window` per
+  eviction. The counter scaffolding + log warning stay in
+  place; the policies activate against the existing field.
 
 ---
 
