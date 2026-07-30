@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3H.1 ship (SpriteSheet = AtlasDesc + path; uvRect delegates to AYTileSamplerUV::tileUV; §13.18). Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2 + §13.PF pre-flight all landed in this commit chain.
-> **Version**: v0.1.16 (2026-07-30).
+> **Status**: P3H.3 ship (foreachTilemapView read-only visitor returning TilemapEntryView; §13.19). Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2 + P3H.1 + §13.PF pre-flight all landed in this commit chain.
+> **Version**: v0.1.17 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2548,6 +2548,82 @@ All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
 
 - Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
 - Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+
+---
+
+### 13.19 v0.1.17 — 2026-07-30 (P3H.3 foreachTilemapView — in-AY2D)
+
+**Phase**: P3H.3 (in-AY2D scope only — read-only metadata
+visitor; no cross-module PR; lazy-streaming counterpart to
+P3H.2's eager `World2DSnapshot::build`).
+
+**Locked changes** (per §13.PF C9 reshape):
+
+- §3: `World2D::foreachTilemapView(F f)` template member,
+  header-inline. Iterates the `entries` vector and invokes
+  the visitor with a `TilemapEntryView` (handle / layer /
+  sortingKey) per entry. The visitor is const, so the
+  registry / `resourceEpoch` are NOT mutated (§3.4 lock).
+  Order = `entries` order = registration order — the same
+  order `World2DSnapshot::build()` uses.
+- §13.PF C9: the visitor NEVER hands out `Entry&` because
+  `Entry::resource` is always `nullptr` at HEAD (the
+  `.aytilemap` loader PR is a cross-module concern per
+  §4.2.1) and exposing `IAYTilemap*` would hand out a
+  dangling pointer to an incomplete type.
+- §13.PF C9: `TilemapEntryView` was MOVED from
+  `AYWorld2DSnapshot.h` to `AYWorld2D.h`. The struct is
+  still POD-equivalent (handle + layer + sortingKey), but
+  the new location avoids a circular include
+  (`AYWorld2D.h -> AYWorld2DSnapshot.h -> AYWorld2D.h`)
+  that would otherwise prevent the header-inline template
+  from compiling. `AYWorld2DSnapshot.h` re-exports the
+  type via its `AYWorld2D.h` include; no duplicate
+  definition.
+- §3: the visitor signature is `void(const TilemapEntryView&)`
+  so callers can `f(...)` lambdas / function objects
+  without templates-on-templates gymnastics. The lazy
+  streaming counterpart complements P3H.2's eager
+  `World2DSnapshot::build` (which materialises a full copy).
+- `unittest/CMakeLists.txt` adds `Test_ForeachTilemapView.cpp`.
+
+**Tests** (`unittest/Test_ForeachTilemapView.cpp` — 2 cases /
+14 CHECK):
+
+1. `VisitorIteratesAllEntriesInRegistrationOrder` — 4
+   `addTilemap` calls; the visitor sees all 4 in order,
+   each carrying the matching `TilemapHandle` / layer /
+   sortingKey.
+2. `TilemapEntryViewHasNoResourceAccessor` —
+   `static_assert` that `sizeof(TilemapEntryView)` equals
+   `sizeof(TilemapHandle) + sizeof(uint32_t) * 2` (lock
+   that no field was added without updating §13.PF C9 +
+   §13.19). Empty-world visitor never invokes the
+   callback. Mutating the visitor does NOT bump
+   `resourceEpoch` (§3.4 lock verified).
+
+All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
++ Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2 + P3H.1)
+untouched. P3H.2's `Test_World2DSnapshot` still passes
+because `TilemapEntryView` is identical (just relocated).
+
+- §11.2: bgfx-leak guard stays green. No new public headers
+  (the struct relocation is internal).
+- §13.19: This changelog entry. Front-matter bumped to
+  v0.1.17. Total tests: **24 TEST_SUITE / 855 CHECK
+  assertions PASS** (was 23 / 841 at v0.1.16; +1 suite,
+  +14 CHECK). 3× consecutive green runs locked (end-of-plan
+  checkpoint per Phase 3G discipline).
+
+**Open follow-ups** (unchanged from §13.18 + §13.PF):
+
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+- All 7 in-AY2D slices from the §13.PF / plan-agent reshape
+  (Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2 +
+  P3H.1 + P3H.3) shipped. Next in-AY2D batch may tackle
+  Phase 4 streaming (R-3G.1 full wire), Phase 5 follow-up
+  (blocked-tile-id-set for `isBlocked` / raycast walker),
+  or new candidate slices.
 
 ---
 

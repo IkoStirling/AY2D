@@ -1,19 +1,19 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.16, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.18 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.17, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.19 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — P3H.1 in-AY2D SpriteSheet thin wrapper (2026-07-30)
+## 当前状态 — P3H.3 in-AY2D foreachTilemapView read-only visitor (2026-07-30)
 
-- `design.md` 是权威设计（v0.1.16 + audit F-1..F-19 + Changelog §13.1..§13.18 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G）。代码与 design.md 不一致时，design.md 优先。
-- 子模块 HEAD = P3H.1：`include/AY2D/AYSpriteSheet.h` ships `SpriteSheet` = `AtlasDesc + std::string texturePath + FRectangle uvRect(uint32_t)` thin wrapper；uvRect delegates to `AYTileSamplerUV::tileUV`（no new UV derivation logic）。
-- `unittest/` 现在有 **23** 个 test 文件 / **841** CHECK assertions PASS（P3D.2 22/769 → P3H.1 23/841 = +1 suite, +72 CHECK — case 1 sweeps 16 tiles × 4 CHECK = 64 + case 2 ~8）。新增 `Test_SpriteSheet` 走真 wired delta（2 case：uvRect matches tileUV / field layout + copy semantics）。
-- 锁行为（§3 + §5.5 + §13.PF + §13.18）：L-3 持续生效（no bgfx handle；only opaque path string）。§13.PF C4 reshape 持续生效（thinin wrapper, no UV re-implementation）。其他 §13.PF locks 持续生效（C5 TilemapBinding deprecated; C6 flagsAtRaw Empty; C8 TileCoord deviation）。
-- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G / Phase 5 / P3H.2 / P3G.2a / P3G.1 partial / P3D.2 任何已有测试。
+- `design.md` 是权威设计（v0.1.17 + audit F-1..F-19 + Changelog §13.1..§13.19 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G）。代码与 design.md 不一致时，design.md 优先。
+- 子模块 HEAD = P3H.3：`World2D::foreachTilemapView(F f) const` header-inline template visitor emits `TilemapEntryView` (handle/layer/sortingKey) per entry；never hands out raw `Entry&`（per §13.PF C9 dangling-resource concern）。`TilemapEntryView` relocation from `AYWorld2DSnapshot.h` → `AYWorld2D.h`（消除 circular include）。
+- `unittest/` 现在有 **24** 个 test 文件 / **855** CHECK assertions PASS（P3H.1 23/841 → P3H.3 24/855 = +1 suite, +14 CHECK）。新增 `Test_ForeachTilemapView` 走真 wired delta（2 case：iterates registration order / no resource accessor static_assert + const visitor no resourceEpoch bump）。3× consecutive green runs locked end-of-plan。
+- 锁行为（§3 + §13.PF + §13.19）：§13.PF C9 (no `Entry&` exposure; TilemapEntryView no resource field) 持续生效；§3.4 `resourceEpoch` lock（const visitor 不 bump epoch）持续生效；其他 §13.PF locks 持续生效（C5 TilemapBinding deprecated; C6 flagsAtRaw Empty; C8 TileCoord deviation）。
+- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G / Phase 5 / P3H.2 / P3G.2a / P3G.1 partial / P3D.2 / P3H.1 任何已有测试。P3H.2 `Test_World2DSnapshot` 持续 PASS（`TilemapEntryView` 仅 relocation，struct 完全相同）。
 - **R-10 lock 守住**：AY2D 没有 AYAnimation include / link。
 - `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath AYLog)` 持续生效。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（21 public headers scanned, 0 leaks；新 `AYSpriteSheet.h` 是 `<cstdint>` + `<string>` + `aymath/MathTypes.h` + `AYAtlasDesc.h` + `AYTileSamplerUV.h`，全 std/AYMath/AY2D-internal）。
-- 跨模块 PR 仍按 `design.md` §4.2.1 deferred。P3H.1 不开任何跨模块 PR（thinin wrapper pure in-AY2D；AYResource 的 `.ayatlas` 解析路径是 cross-module CM-5）。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（21 public headers scanned, 0 leaks；P3H.3 不加新 header，只是 relocation）。
+- **全部 7 in-AY2D slice 已 ship** (Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2 + P3H.1 + P3H.3)。跨模块 PR (CM-1..CM-5) 仍按 `design.md` §4.2.1 deferred。
 
 ## 重要规则
 

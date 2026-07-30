@@ -178,4 +178,4 @@ else()
         "skipping enable_testing/add_subdirectory for Phase 0.")
 endif()
 
-message(STATUS "AY2D v0.1.16 (P3H.1 SpriteSheet = AtlasDesc + path) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
+message(STATUS "AY2D v0.1.17 (P3H.3 foreachTilemapView read-only visitor) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
