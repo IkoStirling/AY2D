@@ -21,6 +21,7 @@
 //   | ay2d_tiles_mutated      | uint64_t | count         |
 //   | ay2d_tiles_resident     | uint64_t | count         |
 //   | ay2d_tilemaps_in_world  | uint32_t | count         |
+//   | ay2d_chunk_io_reject    | uint64_t | count         |  (Phase 3G, §18.1)
 //
 // See design.md §14.2 for the wiring contract (which mutation
 // path bumps which field).
@@ -87,6 +88,14 @@ struct Ay2DCounters {
     // at 0; see §14.5 R-3C.1).
     std::atomic<uint32_t> tilemaps_in_world   = 0;
 
+    // Phase 3G (§18.1): cumulative count of `requestChunk`
+    // rejections caused by the rate gate
+    // (`maxIoBytesPerSec` exceeded). Cumulative — reset ONLY
+    // by `resetAll`, NOT by `resetPerFrame` (R-3G.2). The rate
+    // gate is the in-AY2D budget enforcer for the P3G
+    // `TilemapBudget` shape; Phase 4 streaming PR extends it.
+    std::atomic<uint64_t> chunk_io_reject     = 0;
+
     // Cheap non-atomic snapshot helper. Returns a copy of the
     // current values; the snapshot is not internally consistent
     // across fields (each field is a relaxed load) but is
@@ -102,6 +111,8 @@ struct Ay2DCounters {
         uint64_t tiles_mutated;
         uint64_t tiles_resident;
         uint32_t tilemaps_in_world;
+        // Phase 3G (§18.1): rate-gate rejection counter.
+        uint64_t chunk_io_reject;
     };
 
     [[nodiscard]] Snapshot snapshot() const noexcept {
@@ -116,6 +127,8 @@ struct Ay2DCounters {
             tiles_mutated.load(std::memory_order_relaxed),
             tiles_resident.load(std::memory_order_relaxed),
             tilemaps_in_world.load(std::memory_order_relaxed),
+            // Phase 3G.
+            chunk_io_reject.load(std::memory_order_relaxed),
         };
     }
 
@@ -132,6 +145,9 @@ struct Ay2DCounters {
         tiles_mutated.store(0, std::memory_order_relaxed);
         tiles_resident.store(0, std::memory_order_relaxed);
         tilemaps_in_world.store(0, std::memory_order_relaxed);
+        // Phase 3G (R-3G.2: chunk_io_reject is cumulative, NOT
+        // per-frame — reset by resetAll only).
+        chunk_io_reject.store(0, std::memory_order_relaxed);
     }
 
     // Reset the per-frame fields only (chunk_io_* and

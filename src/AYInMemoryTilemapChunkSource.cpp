@@ -135,6 +135,38 @@ ChunkRequestHandle InMemoryTilemapChunkSource::requestChunk(ChunkCoord coord) no
         return ChunkRequestHandle{++_nextRequestIndex, _nextRequestGen};
     }
 
+    // Phase 3G (§18.2): rate gate. When `_maxIoBytesPerSec == 0`
+    // the gate is disabled (R-3G.3a) and the rest of this
+    // function falls through to the pre-P3G path. The gate
+    // sits BEFORE the pending-map insert so a rejected request
+    // does not accumulate `_pending` noise.
+    if (_maxIoBytesPerSec != 0) {
+        const uint64_t nowUs = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+        // Window rollover: when now - _windowStartUs exceeds the
+        // 1-second window, reset the consumed counter and start a
+        // new window.
+        if (_windowStartUs == 0 || nowUs - _windowStartUs >= kRateWindowUs) {
+            _windowStartUs    = nowUs;
+            _consumedInWindow = 0;
+        }
+        // The chunk-bytes-per-request is the source's nominal —
+        // all `InMemoryTilemapChunkSource` chunks use the same
+        // width; we read it via the helper. P3G hard-codes the
+        // 32 KB / 64 KB nominals.
+        const uint64_t nominal = nominalChunkBytes(TileIdPackMode::Narrow16);
+        if (_consumedInWindow + nominal > _maxIoBytesPerSec) {
+            // Rate-limited: bump the rejection counter, return
+            // an invalid handle. The caller's `tryGetChunk` will
+            // see no entry and report "not loaded".
+            _counters.chunk_io_reject.fetch_add(
+                1u, std::memory_order_relaxed);
+            return ChunkRequestHandle{0u, 0u};
+        }
+        _consumedInWindow += nominal;
+    }
+
     // Reserve the next (index, generation). When the index wraps
     // past ChunkRequestHandle::kMaxIndex, bump the generation and
     // restart the index from 1. The wrap is the basic ABA guard:
@@ -154,6 +186,11 @@ ChunkRequestHandle InMemoryTilemapChunkSource::requestChunk(ChunkCoord coord) no
 
     // Phase 3 telemetry: stamp the request time so put() can
     // compute the request → delivery latency into chunk_io_us.
+    //
+    // The wall clock read here is also used by the rate gate
+    // above; we re-read here only for symmetry with the
+    // pre-P3G path. The cost is one cheap `now()` call per
+    // accepted request.
     const uint64_t nowUs = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
@@ -186,6 +223,68 @@ void InMemoryTilemapChunkSource::cancelChunk(ChunkRequestHandle handle) noexcept
     // and bumped) does not accidentally erase a fresh handle's
     // pending entry.
     _pending.erase(handle.id());
+}
+
+// ----------------------------------------------------------------------
+// Phase 3G (design.md §18.1, §18.4): runtime budget mutators.
+// ----------------------------------------------------------------------
+
+void InMemoryTilemapChunkSource::setCapacity(uint32_t capacity) noexcept {
+    // LRU wire: same `_capacity` field the ctor populates. Setting
+    // to 0 disables the cap (unlimited, matches ctor default).
+    _capacity = capacity;
+    if (_capacity != 0) {
+        // Drop anyone now over the cap (front = LRU). Uses the
+        // same logic as `evictIfNeeded` but called explicitly so
+        // the cap change takes effect without waiting on the next
+        // `putBack`.
+        while (_cache.size() > _capacity) {
+            const MapKey k = packKey(_cache.front().first);
+            _cache.erase(_cache.begin());
+            _index.erase(k);
+        }
+        _counters.chunk_resident_count.store(
+            static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
+    }
+    // Echo back into the budget request so `budget()` reads back
+    // the same number.
+    _budgetRequest.maxChunksLoaded = _capacity;
+}
+
+void InMemoryTilemapChunkSource::setMaxIoBytesPerSec(uint64_t bytesPerSec) noexcept {
+    // R-3G.3a: 0 disables the gate. The `_windowStartUs` is
+    // intentionally NOT reset here — if the gate is re-enabled
+    // later, the new window starts on the next `requestChunk`
+    // call (lazy).
+    _maxIoBytesPerSec = bytesPerSec;
+    _budgetRequest.maxIoBytesPerSec = bytesPerSec;
+}
+
+bool InMemoryTilemapChunkSource::setBudget(const TilemapBudget& b) noexcept {
+    // R-3G.4: policy == LRU is the only one wired. Distance /
+    // TimeWindow return false (no-op; R-3G.1).
+    if (b.eviction != EvictionPolicy::LRU) return false;
+
+    setCapacity(b.maxChunksLoaded);
+    setMaxIoBytesPerSec(b.maxIoBytesPerSec);
+    // Residency side: acknowledged but not wired (R-3G.4).
+    _budgetRequest.maxChunksResident = b.maxChunksResident;
+    return true;
+}
+
+void InMemoryTilemapChunkSource::advanceWindowForTest(uint64_t nowUs) noexcept {
+    // R-3G.7: test-only deterministic helper. Bumps the
+    // window's `_windowStartUs` such that the next
+    // `requestChunk` call rolls the window forward — so the
+    // caller does not need a real-time `sleep`.
+    //
+    // Setting `_windowStartUs` to a value older than the window
+    // triggers the rollover branch in `requestChunk`. The new
+    // window then starts at `nowUs` (the actual wall clock
+    // read inside `requestChunk`).
+    if (_maxIoBytesPerSec != 0 && _windowStartUs != 0) {
+        _windowStartUs = nowUs - kRateWindowUs - 1u;
+    }
 }
 
 } // namespace ayt::ay2d

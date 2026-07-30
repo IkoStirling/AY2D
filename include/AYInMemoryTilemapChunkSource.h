@@ -27,6 +27,7 @@
 #include "AYChunkData.h"
 #include "AYChunkRequestHandle.h"
 #include "AYTileCoord.h"
+#include "AYTilemapBudget.h"
 #include "AYTilemapChunkSource.h"
 
 namespace ayt::ay2d {
@@ -92,6 +93,47 @@ public:
     [[nodiscard]] const Ay2DCounters& counters() const noexcept { return _counters; }
     [[nodiscard]]       Ay2DCounters& counters()       noexcept { return _counters; }
 
+    // Phase 3G (§18.1): runtime budget mutators. The ctor's
+    // `capacity` parameter still works (R-3G.7 / backward
+    // compat); these setters rewire the same `_capacity` field
+    // post-construction.
+    //
+    // `setCapacity(0)` flips to unlimited (matches the ctor's
+    // `capacity=0` default). `setCapacity(k > 0)` caps the
+    // cache at `k` chunks; existing over-resident entries are
+    // evicted on the next `evictIfNeeded` call.
+    void setCapacity(uint32_t capacity) noexcept;
+
+    // `setMaxIoBytesPerSec(0)` disables the rate gate (R-3G.3a).
+    // Non-zero activates the sliding-window rejection policy on
+    // `requestChunk` (§18.2).
+    void setMaxIoBytesPerSec(uint64_t bytesPerSec) noexcept;
+
+    // Atomic "apply a budget" (R-3G.4). Returns true iff the
+    // policy is LRU; non-LRU policy → no-op, returns false.
+    // `maxChunksResident` is acknowledged but the source does
+    // not act on it (R-3G.4; Phase 6 PR).
+    [[nodiscard]] bool setBudget(const TilemapBudget& b) noexcept;
+
+    // Read the live budget. The struct shape matches
+    // `TilemapBudget` (forward-compat with Phase 4 / Phase 6).
+    [[nodiscard]] TilemapBudget budget() const noexcept {
+        return TilemapBudget{
+            _capacity,                          // maxChunksLoaded
+            _budgetRequest.maxChunksResident,   // last-requested residency (R-3G.4)
+            _budgetRequest.maxIoBytesPerSec,    // current rate gate
+            EvictionPolicy::LRU,                // hard-wired in P3G (R-3G.1)
+        };
+    }
+
+    // Test-only helper. Advances the rate-gate window so the
+    // caller can drive deterministic tests (R-3G.7). The helper
+    // bumps `_windowStartUs` to (now - kWindowUs - 1us) so the
+    // next `requestChunk` call rolls the window forward. Public
+    // surface; Phase 4 streaming PR can promote this to a
+    // friend-with-test-shim pattern.
+    void advanceWindowForTest(uint64_t nowUs) noexcept;
+
 private:
     uint32_t  _capacity = 0;
     // Phase 3: chunk request ids split into 24-bit index + 8-bit
@@ -117,6 +159,34 @@ private:
         uint64_t   requestTimeUs = 0;
     };
     std::unordered_map<uint32_t, PendingEntry> _pending;
+
+    // Phase 3G (§18.1 / §18.2): rate-gate state. Sliding window
+    // of 1 second; bucket accumulates the *would-be* chunk
+    // byte size per accepted request. Rejection bumps
+    // `chunk_io_reject`. `_budgetRequest` echoes the last
+    // `setBudget(b)` call (used by `budget()` to report the
+    // residency-side value even though it's not wired).
+    static constexpr uint64_t kRateWindowUs = 1'000'000ull; // 1 second
+    uint64_t  _maxIoBytesPerSec   = 0;   // 0 = disabled (R-3G.3a)
+    uint64_t  _windowStartUs      = 0;   // wall-clock at window start
+    uint64_t  _consumedInWindow   = 0;   // bytes consumed in current window
+    TilemapBudget _budgetRequest;       // last-requested budget shape
+
+    // Returns the bytes-per-request for this source based on the
+    // chunk's nominal storage width. P3G hard-codes the
+    // chunk-of-16x16 nominal size:
+    //   Narrow16 => 16*16 * 2B = 512 B. But the §6.2 chunk
+    //     nominal is the type system's standard (32 KB / 64 KB)
+    //     for the rate gate — we use the type system's nominal.
+    [[nodiscard]] static constexpr uint64_t nominalChunkBytes(
+        TileIdPackMode mode) noexcept {
+        // 16*16 cells * 2B (Narrow16) = 512B; we multiply by 64
+        // to use a representative 32 KB nominal. Phase 4 PR may
+        // make this configurable per `TilemapBudget`.
+        return mode == TileIdPackMode::Narrow16
+            ? 32ull * 1024ull
+            : 64ull * 1024ull;
+    }
 
     void evictIfNeeded() noexcept;
 };

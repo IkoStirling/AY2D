@@ -75,6 +75,13 @@ add_executable(${TEST_TARGET}
     # into DrawItem::payload. No new AYMath / AYRenderer
     # dependency - AYMath is already linked.
     Test_SpriteCulling.cpp
+    # Phase 3G in-AY2D tests - chunk-source budget gates
+    # (setCapacity / setMaxIoBytesPerSec / setBudget) + the
+    # 10th chunk_io_reject counter. design.md §13.12 / §18.
+    # LRU-only wire; Distance / TimeWindow deferred to Phase 4
+    # streaming PR (R-3G.1). Tests use advanceWindowForTest
+    # helper for deterministic rate-gate rollover (R-3G.7).
+    Test_ChunkSourceBudget.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
