@@ -127,6 +127,13 @@ add_executable(${TEST_TARGET}
     # NOT inflate evictions_lru (L-3I-4). swapTilemap stays
     # no-purge (§13.15).
     Test_World2DRemoveTilemapPurge.cpp
+    # P3I.4 in-AY2D tests - World2DSnapshot::diff
+    # (§13.23). O(1) fast path on matching resourceEpoch;
+    # sort+two-pointer merge for add/remove/swap; ABA case
+    # (same id, different generation) lands in added+removed,
+    # never modified. No new deps; uses live World2D +
+    # World2DSnapshot::build for deltas.
+    Test_World2DSnapshotDiff.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
