@@ -1,19 +1,18 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.9, 2026-07-29，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.11 + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.10, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.12 + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — Phase 3F in-AY2D sprite culling helper (2026-07-29)
+## 当前状态 — Phase 3G in-AY2D chunk-source budget + reject counter (2026-07-30)
 
-- `design.md` 是权威设计（v0.1.9 + audit F-1..F-19 + Changelog §13.1..§13.11 + §14 P3C + §15 P3D + §16 P3E + §17 P3F）。代码与 design.md 不一致时，design.md 优先。
-- 子模块 HEAD = Phase 3F in-AY2D sprite scene builder：`SpriteDrawCmd` POD（约 88B per cmd，纯 AYSprite + AYMath，**不**触 AYRenderer）+ `WorldAabb(camera)` 内联 helper 推导相机 world AABB + 自由函数 `buildSpriteScene(sprites, camera, out)` 在 `src/AYSpriteCulling.cpp` 走 AABB 预剔除 → layer-mask 剔除 → `std::stable_sort` by `packedSortKey` → 输出 cmd。
-- `unittest/` 现在有 **16** 个 test 文件 / **459** CHECK assertions PASS（Phase 3E 15/114/431 → Phase 3F 16/??/459 = +1 suite, +10 case, +28 CHECK）。新增 `Test_SpriteCulling` 走真 wired delta（同 P3C/P3D/P3E 纪律）。
-- 锁行为（§17.2 / R-3F.1..7）：NO AYRenderer include（R-3F.1 验证）· 退化相机（`viewSize<=0` 或 `viewport.{w,h}Px<=0`）cull-level short-circuit 直接 empty output，**不**依赖 `FRectangle::intersects` 对空 rect 的严格 less-compare 语义（R-3F.2 踩坑 — 见 ay-2d.md 踩坑 #24）· sprite AABB = translation ±0.5（R-3F.4），不考虑 scale/rotation（matrix-aware bounds 留给 cross-module PR）· layer-mask bit test 前置剔除再排序（R-3F.5）· `std::stable_sort` 不是 `std::sort`（R-3F.6 / F-2，test case 7 用 `m[6]` 读 X translation 锁顺序）· 纯数据 carrier，**不**做 CPU 投影（R-3F.7，per-frame matrix projection 是 GPU-side via AYRenderer）。
-- P3F 给未来的 cross-module PR（§4.2.1）准备好了 `SpriteDrawCmd → DrawItem::payload` 翻译面，但不写翻译（必须由 AYRenderer maintainer 拥有 merge gate）。
-- `World2D`/`Tilemap`/`OrthographicCamera` 现有 surface 不变；P3F 是叠加 API。
-- **R-10 lock 守住**：AY2D 没有 AYAnimation include / link；动画表是 AY2D 自管 + AYTime-free。
+- `design.md` 是权威设计（v0.1.10 + audit F-1..F-19 + Changelog §13.1..§13.12 + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G）。代码与 design.md 不一致时，design.md 优先。
+- 子模块 HEAD = Phase 3G in-AY2D chunk-source budget gates：`TilemapBudget` + `EvictionPolicy` 在新 header `include/AYTilemapBudget.h`（§6.2 value type），`Ay2DCounters` +`chunk_io_reject` 第 10 字段；`InMemoryTilemapChunkSource` 加 4 个 mutator：`setCapacity(uint32_t)` / `setMaxIoBytesPerSec(uint64_t)` / `setBudget(b) -> bool` / `budget()` + 1 测试 helper `advanceWindowForTest(nowUs)`。`requestChunk` 走 1 秒滑动窗口 rate gate，超 `maxIoBytesPerSec` 拒绝并 bump `chunk_io_reject`。
+- `unittest/` 现在有 **17** 个 test 文件 / **516** CHECK assertions PASS（Phase 3F 16/459 → Phase 3G 17/516 = +1 suite, +57 CHECK）。新增 `Test_ChunkSourceBudget` 走真 wired delta（8 case：setCapacity 0/5 + disable/rate-limit gate + window rollover + non-LRU policy no-op + reset discipline）。
+- 锁行为（§18.6 / R-3G.1..7）：**R-3G.1** non-LRU policy = no-op + false（Distance/TimeWindow 留给 Phase 4 streaming 整 Phase PR，§18.5 design 锁）；**R-3G.2** `chunk_io_reject` 累计只 resetAll 不 resetPerFrame（与其他 chunk_io_* 一致）；**R-3G.3** 滑动窗口 1 秒、严格大于比较（boundary = 64KB/32KB = 第二请求通过，第三请求拒绝）；**R-3G.3a** `maxIoBytesPerSec == 0` 关闭 gate（test 3 验证连续 16 个 request 全部 valid）；**R-3G.4** `maxChunksResident` 收下但不 wire（Phase 6 PR）；**R-3G.7** 测试走 `advanceWindowForTest` 推时间，**不**用 `sleep()`。
+- 不破坏 P3A / P3B / P3C / P3D / P3E / P3F 任何已有测试（counter 字段是 append-only，LRU wire 已 ship `evictIfNeeded` 复用）。
+- **R-10 lock 守住**：AY2D 没有 AYAnimation include / link。
 - `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath)` 持续生效。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（17 public headers scanned, 0 leaks；新 headers `AYSpriteDrawCmd.h` / `AYWorldAabb.h` / `AYSpriteCulling.h` 都只 include stdint + aymath/MathTypes.h + in-AY2D）。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（18 public headers scanned, 0 leaks；新 `AYTilemapBudget.h` 是 `<cstdint>` only + value type）。
 - 跨模块 PR 仍按 `design.md` §4.2.1 deferred：AYRenderer / AYResource / AYEntity / AYShader maintainer 拥有各自的 merge gate。
 
 ## 重要规则

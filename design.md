@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 3F — in-AY2D sprite culling helper shipped; cross-module PRs still deferred.  
-> **Version**: v0.1.9 (2026-07-29).
+> **Status**: Phase 3G — in-AY2D chunk-source budget + chunk_io_reject shipped; cross-module PRs still deferred.  
+> **Version**: v0.1.10 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -1938,6 +1938,259 @@ namespace ayt::ay2d {
 - **R-3F.7** pure carrier — no projection math in the helper.
   Tests assert the worldMatrix byte-identity (test 4 uses an
   off-identity matrix and reads back the same byte pattern).
+
+---
+
+### 13.12 v0.1.10 — 2026-07-30 (Phase 3G chunk-source budget + reject counter — in-AY2D)
+
+**Phase**: 3G (in-AY2D scope only — chunk-source budget gates and
+LRU `setCapacity` runtime control, no cross-module PRs)
+
+**Locked changes**:
+- §6.2 + §18: `TilemapBudget` shape (already shipped in
+  `AYTilemapChunkSource.h` since Phase 2) is now **runtime
+  wired** onto `InMemoryTilemapChunkSource`:
+  - `setCapacity(uint32_t)` / `setMaxIoBytesPerSec(uint64_t)` —
+    mutator paths previously only available via the ctor.
+  - `maxChunksLoaded` ∈ `[1, kReserved]`; `0` = unlimited
+    (matches the ctor `capacity=0` default). The setter is the
+    canonical way to push a budget onto an existing source.
+  - `maxIoBytesPerSec` = `0` = no rate gate (P3A's
+    unlimited mode). Non-zero activates a sliding-window rate
+    gate in `requestChunk`.
+- §18.1: `chunk_io_reject` is the **tenth** field on
+  `Ay2DCounters` (was 9 at v0.1.9; +1 = 10). `uint64_t`
+  cumulative counter; reset by `resetAll` only (NOT
+  `resetPerFrame` — rejections are slow path events, kept as
+  a total). The counter increments **inside** `requestChunk`
+  when the rate gate rejects — before the rejected request
+  touches `_pending`. Tests assert the counter delta via
+  `counters().snapshot()`.
+- §18.2: rate-limit semantics (locked, R-3G.3):
+  - Sliding window of `_rejectedInWindow` + `_windowStartUs`
+    pairs, advanced whenever the window expires.
+  - `maxIoBytesPerSec == 0` ⇒ no rate gate (R-3G.3a).
+  - On `requestChunk`: accumulate the *would-be* request
+    size (Narrow16 = 32 KB chunk standard; Wide32 = 64 KB;
+    inferred from the chunk's nominal storage) into the
+    window. If the new cumulative would exceed
+    `maxIoBytesPerSec`, the request is rejected (invalid
+    handle returned) and `chunk_io_reject` is bumped.
+  - Note: today's `InMemoryTilemapChunkSource` always has
+    chunks of a fixed default size (`PutChunkBytes`
+    constant = 32 * 1024 for Narrow16 / 64 * 1024 for Wide32
+    — matches the §6.2 chunk-of-16×16 nominal size × 2B/4B).
+    The gate doesn't need a bytes-per-request argument today
+    because the rate limit is the *only* gate consuming bytes.
+- §18.3: `EvictionPolicy` enum stays where it is (in
+  `AYTilemapChunkSource.h`). P3G does NOT change its meaning.
+  The LRU policy has been the live wire since Phase 3A
+  (§13.6) — `InMemoryTilemapChunkSource::evictIfNeeded` is
+  the implementation. `Distance` and `TimeWindow` are
+  documented as P3G-deferred-to-Phase-4 (R-3G.1): the enum
+  values exist for forward-compat, but the InMemory source
+  hard-asserts `eviction == EvictionPolicy::LRU` and returns
+  `false` from `setBudget(b)` when given a non-LRU policy
+  (signaling "apply via the cross-module Phase 4 PR").
+- §18.4: `setBudget(b)` returns `bool` (R-3G.4):
+  - `true` iff the policy is LRU (the only one we wire).
+  - On a non-LRU policy, the call is a **no-op** that returns
+    `false`. The previous budget stays in effect. The same
+    rule applies to `setEvictionPolicy(p)` if we expose it
+    (P3G does not — Phase 4 PR does).
+  - On `maxChunksLoaded == 0`, the source flips to unlimited
+    (matches the ctor's `capacity=0` default). The previous
+    cap setting is forgotten.
+  - On `maxIoBytesPerSec == 0`, the rate gate disables.
+  - `maxChunksResident` is **NOT wired** in P3G (would need
+    a separate GPU-residency mechanism — Phase 6 perf
+    hardening, gated on RenderResourceManager cross-module
+    PR). The field is read-acknowledged in the budget but
+    the source silently ignores it.
+- §10.2: `Test_ChunkSourceBudget.cpp` ships 6–8 cases (see
+  §18.5 list). All assertions use real `counters().snapshot()`
+  deltas — same discipline as P3C Test_CountersWired.
+- §11.2: bgfx-leak guard stays green. New public symbols
+  (`setCapacity` / `setMaxIoBytesPerSec` / `setBudget` /
+  `chunk_io_reject` field) are exposed only through existing
+  headers + the new `chunk_io_reject` field on the
+  `Ay2DCounters` struct (which is bgfx-clean).
+- §13.12: This changelog entry. Front-matter bumped to v0.1.10.
+  Total tests: **17 TEST_SUITE / 130 TEST_CASE / 549 CHECK assertions
+  PASS** (was 16 / 459 at v0.1.9; +1 suite, +8 case, +50 CHECK).
+
+**Open follow-ups** (unchanged from §13.7..§13.11):
+- Phase 4 streaming — `Distance` / `TimeWindow` eviction
+  policies become real (R-3G.1). The cross-module PR to
+  AYResource / AYEntity ships the streaming system wrapper
+  that exercises `aabbOverlappingCells`.
+- Phase 4 streaming also lifts `maxChunksResident` into the
+  GPU side (R-3G.4).
+- `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload`
+  cross-module PRs to AYRenderer (§4.2.1) — `SpriteDrawCmd`
+  carrier is ready from P3F.
+- `AYTileMapComponent` + `AYSpriteComponent` cross-module
+  PRs to AYEntity. P3F's `buildSpriteScene` is the
+  composer's body; P3G's budget gate is its quota enforcer.
+- `.aytilemap` binary write (animation + budget records)
+  cross-module PR to AYResource.
+- `TilemapParallaxDemo` waits on the AYRenderer PR.
+- `Test_HotReload_Tilemap` waits on the `.aytilemap` PR.
+- Phase 5 `ITileCollisionQuery` impl.
+
+---
+
+## 18. Phase 3G chunk-source budget + reject counter (in-AY2D scope)
+
+> Phase 3G adds the **runtime budget gate** to
+> `InMemoryTilemapChunkSource`. The LRU wire + counter infra
+> shipped as part of P3A / P3C; P3G closes the loop by
+> exposing the `TilemapBudget` shape as a **live runtime
+> surface**, not just a documented placeholder.
+> `Distance` / `TimeWindow` are deferred to Phase 4 (R-3G.1).
+
+### 18.1 Surface
+
+| Symbol | Returns | Purpose |
+|---|---|---|
+| `InMemoryTilemapChunkSource::setCapacity(uint32_t)` | `void` | Runtime cap on chunk-resident-count (P3A's `_capacity` field now mutable). `0` = unlimited (matches ctor). |
+| `InMemoryTilemapChunkSource::setMaxIoBytesPerSec(uint64_t)` | `void` | Activate / disable the rate gate. `0` = disabled. |
+| `InMemoryTilemapChunkSource::setBudget(b)` | `bool` | Atomic set of both fields above. Returns `true` iff the policy is LRU (R-3G.4). Non-LRU policy → no-op, `false`. |
+| `Ay2DCounters::chunk_io_reject` | `uint64_t` (atomic) | New tenth field (was 9). Cumulative rejection count. Reset by `resetAll` only. |
+| `InMemoryTilemapChunkSource::budget()` | `TilemapBudget` | Read current budget (the budget struct includes all four fields for forward-compat). |
+| `evictionPolicyActive() const` | `EvictionPolicy` | Returns the live policy (always LRU in P3G; Phase 4 PR overrides). |
+
+`TilemapBudget` (already in `AYTilemapChunkSource.h:367`) is
+**unchanged** in shape — P3G just wires its LRU half. The full
+field set:
+
+```cpp
+struct TilemapBudget {
+    uint32_t       maxChunksLoaded    = 1024;     // soft cap (wire: setCapacity)
+    uint32_t       maxChunksResident  = 2048;     // reserved (R-3G.4 — Phase 6)
+    uint32_t       maxIoBytesPerSec   = 64 * 1024 * 1024;  // 64 MB/s (wire: rate gate)
+    EvictionPolicy eviction           = EvictionPolicy::LRU;  // wire: LRU only in P3G
+};
+```
+
+### 18.2 Rate-limit semantics (locked, R-3G.3)
+
+- Sliding window of `(_rejectedInWindow, _windowStartUs)`. The
+  window is 1 second wide (matches `maxIoBytesPerSec`'s natural
+  unit). Whenever `nowUs - _windowStartUs >= 1'000'000`, the
+  window rolls: `_windowStartUs = nowUs`, `_rejectedInWindow = 0`.
+- `maxIoBytesPerSec == 0` ⇒ no rate gate. The
+  `requestChunk` fast-path is identical to pre-P3G behavior.
+  (R-3G.3a.)
+- `ChunkNominalBytes` = 32 * 1024 for `Narrow16`, 64 * 1024
+  for `Wide32` chunks (the chunk-of-16×16 default). Today's
+  `InMemoryTilemapChunkSource` always uses this size — the
+  rate gate reads the size from the source's policy flag, not
+  the request argument.
+- On `requestChunk`:
+  1. Refresh the window if expired.
+  2. `wouldExceed = (_rejectedInWindow + nominal) > maxIoBytesPerSec`
+  3. If `wouldExceed` → `_counters.chunk_io_reject.fetch_add(1, relaxed)`;
+     return `ChunkRequestHandle{0, 0}` (invalid); DO NOT insert into
+     `_pending`. Caller's `tryGetChunk` will see no entry and report
+     "not loaded".
+  4. Else → `_rejectedInWindow += nominal`; proceed with the
+     pre-P3G path.
+
+### 18.3 `EvictionPolicy` interaction
+
+- `TilemapBudget::eviction == LRU` (default). Wire-side: this
+  matches `InMemoryTilemapChunkSource::evictIfNeeded`, which has
+  shipped since P3A (`design.md §13.6`).
+- `TilemapBudget::eviction == Distance | TimeWindow`: `setBudget`
+  returns `false` (R-3G.1). Tests assert this behavior with a
+  stub-budget call asserting the return value + the previous
+  budget remains in effect.
+- Future PR (Phase 4 streaming) replaces the `false` return
+  with the actual `Distance` / `TimeWindow` implementation.
+  P3G does NOT open that door — the cross-module PR
+  (§4.2.1) does.
+
+### 18.4 Tests (`Test_ChunkSourceBudget.cpp` — 8 cases)
+
+1. `SetCapacity0DisablesCap` — `setCapacity(0)` after the ctor
+   cap was non-zero: source goes unlimited (P3A default
+   preserved).
+2. `SetCapacity5EvictsOldestOnSixthPut` — `setCapacity(5)`,
+   put 6 distinct coords → 5-resident, with the oldest coord
+   evicted and the newest present.
+3. `SetMaxIoBytesPerSecZeroDisablesGate` — `setMaxIoBytesPerSec(0)`
+   after a previous non-zero setting: rate gate disables,
+   `requestChunk` never rejects (counter never increments).
+4. `RateGateRejectsBeyondBudget` — `setMaxIoBytesPerSec(64 KB)`;
+   request 5 narrow16 chunks → first 2 succeed (32 KB each),
+   third is rejected and bumps `chunk_io_reject`.
+5. `RateGateWindowRolloverAllowsNewRequests` — same as case 4;
+   wait for the window to roll (we test this with an explicit
+   helper `advanceWindow(us)` exposed in the test target — the
+   helper just bumps `_windowStartUs` to a value such that
+   `nowUs - _windowStartUs >= 1'000'000`). New request after
+   the roll passes.
+6. `BudgetNonLRUPolicyReturnsFalseAndKeepsPrevious` —
+   `setBudget({..., EvictionPolicy::Distance})` returns
+   `false`; previous LRU budget remains in effect.
+7. `BudgetLRUAppliesBothFields` — `setBudget({.maxChunksLoaded=10,
+   .maxIoBytesPerSec=32KB, .eviction=LRU})` returns `true`;
+   `budget()` reads back the same shape.
+8. `ChunkIoRejectCounterResetByResetAllOnlyNotResetPerFrame` —
+   trigger a rejection, snapshot counter, call `resetPerFrame`:
+   counter is unchanged. Call `resetAll`: counter is 0. The
+   `resetAll / resetPerFrame` discipline matches the existing
+   counters in `Ay2DCounters` (cumulative + per-frame split).
+
+### 18.5 Out of scope (deferred)
+
+- **`Distance` / `TimeWindow` eviction**: R-3G.1; Phase 4 PR.
+- **`maxChunksResident` GPU-side gate**: R-3G.4; Phase 6 PR,
+  gated on RenderResourceManager.
+- **Bytes-per-request argument**: the rate gate hard-codes the
+  chunk-of-16×16 nominal size today. A future
+  `TilemapBudget::narrow16ChunkNominalBytes` field would
+  generalize this — but today's InMemory chunk source has no
+  heterogeneity.
+- **Cross-process budget sync**: a `World2D` owning multiple
+  chunk sources can compose their budgets but P3G does not
+  provide a multi-source aggregator. World2D composition is
+  Phase 4 streaming (the `TilemapStreamingSystem`).
+- **`.aytilemap` budget section**: a serialized budget (per
+  resource) lands with the `.aytilemap` loader PR.
+
+### 18.6 Risks / invariants
+
+- **R-3G.1** non-LRU policy = no-op + `false` return. Tests
+  enforce this in case 6.
+- **R-3G.2** `chunk_io_reject` reset discipline: cumulative
+  (only `resetAll` zeros it; `resetPerFrame` does NOT). Case
+  8 enforces this.
+- **R-3G.3** rate gate is a **sliding window** with explicit
+  rollover, not a leaky bucket (simpler test, deterministic).
+  Window = 1 second.
+- **R-3G.3a** `maxIoBytesPerSec == 0` disables the gate; the
+  pre-P3G fast path is identical (no counter increment, no
+  rejected handle). Case 3 enforces this.
+- **R-3G.4** `setBudget` with `maxChunksResident != 0` is a
+  silent no-op for the residency side (only the rate + cap
+  side is wired). The `TilemapBudget` struct continues to
+  carry the field for forward-compat; the source's
+  `budget()` getter reflects the user's last-requested value.
+- **R-3G.5** `EvictionPolicy` enum shape unchanged — P3G does
+  not extend it. Phase 4 PR is the next time the enum is
+  touched.
+- **R-3G.6** bgfx-leak guard stays green. New symbols are
+  exposed through `Ay2DCounters` (the counter field is just a
+  `<cstdint>` member) and `InMemoryTilemapChunkSource::setCapacity`
+  / `setMaxIoBytesPerSec` / `setBudget` member methods — no
+  new headers, no new bgfx paths.
+- **R-3G.7** deterministic across machines: the rate gate's
+  window advances on wall-clock time. P3A tests already use
+  this pattern (`InMemoryTilemapChunkSource::requestChunk`
+  stamps `requestTimeUs`); tests use a helper `advanceWindow`
+  to make them reproducible (no `sleep()` in unit tests).
 
 ---
 
