@@ -23,6 +23,13 @@
 #include "AYTilemap.h"
 #include "AYWorld2D.h"
 
+// P3H.2: read-only value-type snapshot (replaces the
+// IWorld2DDebug vtable proposal). No `Entry&` exposure, no
+// dangling `resource` pointer — the snapshot holds plain
+// handle/layer/sortingKey views plus a relaxed atomic counters
+// snapshot. `TilemapBinding` (above) is deprecated.
+#include "AYWorld2DSnapshot.h"
+
 // Collision-flag bitmask + operators (declared in design.md §8.1).
 // Phase 5 (2026-07-30) ships the full §8.1 type set: `Ray2D`,
 // `RaycastHit2D`, `ITileCollisionQuery`. The `TilemapCollisionQueryAdapter`

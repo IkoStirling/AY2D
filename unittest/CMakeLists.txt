@@ -87,6 +87,11 @@ add_executable(${TEST_TARGET}
     # TilemapCollisionQueryAdapter + the flagsAtRaw Empty
     # regression. design.md §13.13 / §8.1. No cross-module PR.
     Test_TileCollisionQuery.cpp
+    # P3H.2 in-AY2D tests - World2DSnapshot value type +
+    # TilemapEntryView (replaces IWorld2DDebug vtable plan).
+    # design.md §13.14. TilemapBinding deprecated (covered
+    # implicitly via warning-on-use).
+    Test_World2DSnapshot.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

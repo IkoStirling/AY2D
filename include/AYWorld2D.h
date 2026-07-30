@@ -41,7 +41,7 @@ struct TilemapHandle {
     }
 };
 
-struct TilemapBinding {
+struct [[deprecated("TilemapBinding is dead code; use TilemapEntryView via World2DSnapshot")]] TilemapBinding {
     TilemapHandle handle;
     uint32_t      layer = 0;     // 0..31
     uint32_t      sortingKey = 0;  // 0..0xFFFFFF

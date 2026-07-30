@@ -37,6 +37,7 @@ set(SRC_FILES
     src/AYTilemap.cpp                    # loadChunkFromSource + chunk-width-mismatch guard
     src/AYInMemoryTilemapChunkSource.cpp # LRU cache + put/get/cancel/evict
     src/AYWorld2D.cpp                    # addTilemap / removeTilemap / swapTilemap + resourceEpoch
+    src/AYWorld2DSnapshot.cpp            # P3H.2: World2DSnapshot::build (value-type)
     src/AYTilemapAnimation.cpp           # Phase 3B: tick + resolveAnimatedTileId
     src/AYTilemapBatch.cpp               # Phase 3D: setTileRange / fillTile / copyTileRange + gridRect
     src/AYSpriteCulling.cpp               # Phase 3F: buildSpriteScene (AABB + layer + stable_sort)
