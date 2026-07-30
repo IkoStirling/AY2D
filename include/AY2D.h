@@ -30,6 +30,11 @@
 // snapshot. `TilemapBinding` (above) is deprecated.
 #include "AYWorld2DSnapshot.h"
 
+// P3H.1: thin wrapper around `AtlasDesc` + a path. Reuses
+// `AYTileSamplerUV::tileUV` for per-cell UV. No bgfx handle
+// (L-3 lock); the path resolves via the cross-module PR.
+#include "AYSpriteSheet.h"
+
 // Collision-flag bitmask + operators (declared in design.md §8.1).
 // Phase 5 (2026-07-30) ships the full §8.1 type set: `Ray2D`,
 // `RaycastHit2D`, `ITileCollisionQuery`. The `TilemapCollisionQueryAdapter`

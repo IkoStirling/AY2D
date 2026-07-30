@@ -107,6 +107,10 @@ add_executable(${TEST_TARGET}
     # per R-3E.5 (regression for the naive corner-port bug).
     # design.md §13.17.
     Test_AabbOfCell.cpp
+    # P3H.1 in-AY2D tests - SpriteSheet thin wrapper
+    # (AtlasDesc + path). design.md §13.18. Reuses
+    # AYTileSamplerUV::tileUV; no new UV derivation logic.
+    Test_SpriteSheet.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
