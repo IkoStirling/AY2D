@@ -96,6 +96,16 @@ struct Ay2DCounters {
     // `TilemapBudget` shape; Phase 4 streaming PR extends it.
     std::atomic<uint64_t> chunk_io_reject     = 0;
 
+    // P3G.2a (§13.15): cumulative count of soft-cap eviction
+    // failures. The soft cap is the second-layer in-AY2D CPU
+    // cap (`maxChunksCpuSoftCap`); when `setBudget` lowers the
+    // soft cap below the cache size, the source trims the
+    // cache down to the soft cap. If the trim is blocked by an
+    // outstanding pin / handle, the counter increments. Same
+    // discipline as `chunk_io_reject`: cumulative, reset ONLY
+    // by `resetAll`, NOT by `resetPerFrame`.
+    std::atomic<uint64_t> chunk_io_residency_reject = 0;
+
     // Cheap non-atomic snapshot helper. Returns a copy of the
     // current values; the snapshot is not internally consistent
     // across fields (each field is a relaxed load) but is
@@ -113,6 +123,8 @@ struct Ay2DCounters {
         uint32_t tilemaps_in_world;
         // Phase 3G (§18.1): rate-gate rejection counter.
         uint64_t chunk_io_reject;
+        // P3G.2a (§13.15): soft-cap eviction failure counter.
+        uint64_t chunk_io_residency_reject;
     };
 
     [[nodiscard]] Snapshot snapshot() const noexcept {
@@ -129,6 +141,8 @@ struct Ay2DCounters {
             tilemaps_in_world.load(std::memory_order_relaxed),
             // Phase 3G.
             chunk_io_reject.load(std::memory_order_relaxed),
+            // P3G.2a.
+            chunk_io_residency_reject.load(std::memory_order_relaxed),
         };
     }
 
@@ -148,6 +162,10 @@ struct Ay2DCounters {
         // Phase 3G (R-3G.2: chunk_io_reject is cumulative, NOT
         // per-frame — reset by resetAll only).
         chunk_io_reject.store(0, std::memory_order_relaxed);
+        // P3G.2a: chunk_io_residency_reject is cumulative
+        // (R-3G.2 discipline extended to soft-cap eviction
+        // failures); reset by resetAll only.
+        chunk_io_residency_reject.store(0, std::memory_order_relaxed);
     }
 
     // Reset the per-frame fields only (chunk_io_* and

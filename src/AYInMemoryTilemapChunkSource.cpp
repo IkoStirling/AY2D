@@ -251,6 +251,51 @@ void InMemoryTilemapChunkSource::setCapacity(uint32_t capacity) noexcept {
     _budgetRequest.maxChunksLoaded = _capacity;
 }
 
+void InMemoryTilemapChunkSource::setMaxChunksCpuSoftCap(uint32_t softCap) noexcept {
+    // P3G.2a (§13.15): in-AY2D CPU soft cap. `0` = disabled.
+    // Non-zero AND below `_capacity` triggers immediate
+    // `evictDownTo(softCap)`. Non-zero AND >= `_capacity` is a
+    // no-op (the hard cap rules). The `setBudget` aggregator
+    // calls this same path on the budget's `maxChunksCpuSoftCap`
+    // field.
+    _maxChunksCpuSoftCap = softCap;
+    _budgetRequest.maxChunksCpuSoftCap = softCap;
+    if (softCap != 0 && _capacity != 0 && softCap < _capacity) {
+        evictDownTo(softCap);
+    }
+    // softCap >= _capacity case: hard cap rules; soft cap is a
+    // no-op. softCap == 0 case: disabled; nothing to trim.
+}
+
+void InMemoryTilemapChunkSource::evictDownTo(uint32_t target) noexcept {
+    // P3G.2a (§13.15): trim the cache down to `target` by
+    // evicting LRU-front entries. No-op when already below
+    // `target`. The pin-set (Phase 4 streaming) is the future
+    // home of "blocked eviction" tracking; today no pins
+    // exist so `chunk_io_residency_reject` stays at 0 in the
+    // trim path.
+    if (target == 0) {
+        // 0 = "trim everything" — drain the cache.
+        target = 1;  // sentinel: while-loop checks `size > target`
+    }
+    // Avoid `target == 0` erasing all (we want at least 1
+    // resident for stable iterator behaviour).
+    while (_cache.size() > target && _cache.size() > 1) {
+        const MapKey k = packKey(_cache.front().first);
+        _cache.erase(_cache.begin());
+        _index.erase(k);
+    }
+    // Edge case: if `target == 0` AND `_capacity == 0` (the
+    // ctor default unlimited), drain entirely.
+    if (target == 1 && _capacity == 0 && _cache.size() == 1) {
+        const MapKey k = packKey(_cache.front().first);
+        _cache.erase(_cache.begin());
+        _index.erase(k);
+    }
+    _counters.chunk_resident_count.store(
+        static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
+}
+
 void InMemoryTilemapChunkSource::setMaxIoBytesPerSec(uint64_t bytesPerSec) noexcept {
     // R-3G.3a: 0 disables the gate. The `_windowStartUs` is
     // intentionally NOT reset here — if the gate is re-enabled
@@ -267,6 +312,10 @@ bool InMemoryTilemapChunkSource::setBudget(const TilemapBudget& b) noexcept {
 
     setCapacity(b.maxChunksLoaded);
     setMaxIoBytesPerSec(b.maxIoBytesPerSec);
+    // P3G.2a: soft cap is the in-AY2D second-layer CPU cap.
+    // Routes through `setMaxChunksCpuSoftCap` so the trim
+    // logic is in one place.
+    setMaxChunksCpuSoftCap(b.maxChunksCpuSoftCap);
     // Residency side: acknowledged but not wired (R-3G.4).
     _budgetRequest.maxChunksResident = b.maxChunksResident;
     return true;

@@ -92,6 +92,11 @@ add_executable(${TEST_TARGET}
     # design.md §13.14. TilemapBinding deprecated (covered
     # implicitly via warning-on-use).
     Test_World2DSnapshot.cpp
+    # P3G.2a in-AY2D tests - maxChunksCpuSoftCap
+    # (in-AY2D CPU soft cap, evict-down-to) +
+    # chunk_io_residency_reject counter. design.md §13.15.
+    # No new AYMath dep; counter appended to Ay2DCounters.
+    Test_CpuSoftCap.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

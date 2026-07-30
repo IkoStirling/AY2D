@@ -34,8 +34,18 @@ enum class EvictionPolicy : uint8_t {
 };
 
 struct TilemapBudget {
-    // Soft cap on chunks loaded into memory (R-3G.4 wire).
+    // Hard cap on chunks loaded into memory (R-3G.4 wire; P3G).
+    // Wired to `InMemoryTilemapChunkSource::setCapacity`.
     uint32_t       maxChunksLoaded    = 1024;
+    // In-AY2D CPU soft cap, evict-down-to semantics
+    // (P3G.2a §13.15). `0` = disabled (no soft cap). When
+    // non-zero AND less than `maxChunksLoaded`, calls to
+    // `setBudget(b)` (or `setMaxChunksCpuSoftCap`) trim the
+    // cache down to this size by evicting LRU-front entries.
+    // When non-zero AND greater-or-equal to `maxChunksLoaded`,
+    // the hard cap rules and the soft cap is a no-op (the
+    // hard cap is the upper bound).
+    uint32_t       maxChunksCpuSoftCap = 0;
     // GPU residency ceiling. NOT wired in P3G (R-3G.4) — the
     // field is acknowledged by the budget struct for forward-
     // compat with Phase 6 perf hardening, but the InMemory

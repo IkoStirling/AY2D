@@ -104,6 +104,17 @@ public:
     // evicted on the next `evictIfNeeded` call.
     void setCapacity(uint32_t capacity) noexcept;
 
+    // P3G.2a (§13.15): set the in-AY2D CPU soft cap. `0` =
+    // disabled (no soft cap). Non-zero AND less than
+    // `_capacity` triggers an immediate `evictDownTo(s)` call,
+    // removing LRU-front entries until `_cache.size() <= s`.
+    // Non-zero AND greater-or-equal to `_capacity` is a no-op
+    // (the hard cap rules; the soft cap cannot exceed it).
+    // Bumps `chunk_io_residency_reject` if the trim is blocked
+    // by a pin set (Phase 4 streaming ships the pin set; today
+    // the counter stays at 0 because nothing blocks eviction).
+    void setMaxChunksCpuSoftCap(uint32_t softCap) noexcept;
+
     // `setMaxIoBytesPerSec(0)` disables the rate gate (R-3G.3a).
     // Non-zero activates the sliding-window rejection policy on
     // `requestChunk` (§18.2).
@@ -113,6 +124,9 @@ public:
     // policy is LRU; non-LRU policy → no-op, returns false.
     // `maxChunksResident` is acknowledged but the source does
     // not act on it (R-3G.4; Phase 6 PR).
+    // P3G.2a (§13.15): `maxChunksCpuSoftCap` is the in-AY2D
+    // second-layer CPU cap; when non-zero and below
+    // `maxChunksLoaded`, an immediate `evictDownTo` runs.
     [[nodiscard]] bool setBudget(const TilemapBudget& b) noexcept;
 
     // Read the live budget. The struct shape matches
@@ -120,6 +134,7 @@ public:
     [[nodiscard]] TilemapBudget budget() const noexcept {
         return TilemapBudget{
             _capacity,                          // maxChunksLoaded
+            _maxChunksCpuSoftCap,               // P3G.2a in-AY2D soft cap
             _budgetRequest.maxChunksResident,   // last-requested residency (R-3G.4)
             _budgetRequest.maxIoBytesPerSec,    // current rate gate
             EvictionPolicy::LRU,                // hard-wired in P3G (R-3G.1)
@@ -172,6 +187,15 @@ private:
     uint64_t  _consumedInWindow   = 0;   // bytes consumed in current window
     TilemapBudget _budgetRequest;       // last-requested budget shape
 
+    // P3G.2a (§13.15): in-AY2D CPU soft cap. `0` = disabled
+    // (no soft cap; LRU hard cap rules alone). Non-zero
+    // triggers an `evictDownTo(s)` whenever a `setBudget` /
+    // `setMaxChunksCpuSoftCap` call sees the new soft cap
+    // below the cache size. Same cumulative/resetAll
+    // discipline as `chunk_io_reject` for the rejection
+    // counter (`chunk_io_residency_reject`).
+    uint32_t  _maxChunksCpuSoftCap = 0;  // 0 = disabled
+
     // Returns the bytes-per-request for this source based on the
     // chunk's nominal storage width. P3G hard-codes the
     // chunk-of-16x16 nominal size:
@@ -189,6 +213,14 @@ private:
     }
 
     void evictIfNeeded() noexcept;
+
+    // P3G.2a (§13.15): trim the cache down to `target` entries
+    // by evicting LRU-front entries. No-op when
+    // `_cache.size() <= target`. When the pin set (Phase 4
+    // streaming) blocks eviction, bumps
+    // `chunk_io_residency_reject` per blocked attempt (today
+    // the pin set is empty so the bump stays at 0).
+    void evictDownTo(uint32_t target) noexcept;
 };
 
 } // namespace ayt::ay2d
