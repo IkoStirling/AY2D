@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3D.2 ship (Tilemap::aabbOfCell centered on cellToWorld per R-3E.5; §13.17). Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + §13.PF pre-flight all landed in this commit chain.
-> **Version**: v0.1.15 (2026-07-30).
+> **Status**: P3H.1 ship (SpriteSheet = AtlasDesc + path; uvRect delegates to AYTileSamplerUV::tileUV; §13.18). Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2 + §13.PF pre-flight all landed in this commit chain.
+> **Version**: v0.1.16 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2495,6 +2495,57 @@ All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
 **Open follow-ups** (unchanged from §13.16 + §13.PF):
 
 - Slice 6 (P3H.1): ship `SpriteSheet = AtlasDesc + path`.
+- Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+
+---
+
+### 13.18 v0.1.16 — 2026-07-30 (P3H.1 SpriteSheet thin wrapper — in-AY2D)
+
+**Phase**: P3H.1 (in-AY2D scope only — value-type atlas+path;
+no new UV derivation logic; reuses `AYTileSamplerUV::tileUV`).
+
+**Locked changes** (per §13.PF C4 reshape):
+
+- §3 / §5.5: `include/AY2D/AYSpriteSheet.h` ships `SpriteSheet`
+  as a thin wrapper: `{ AtlasDesc atlas; std::string
+  texturePath; FRectangle uvRect(uint32_t tileId) const; }`.
+  Header-only struct. No new UV math; `uvRect` delegates to
+  `AYTileSamplerUV::tileUV` so gutter + half-texel (§5.1 /
+  §5.2 / L-7 / L-8) are applied identically to the Tilemap /
+  Sprite query path.
+- L-3 lock: no `bgfx::TextureHandle`. Only an opaque path
+  string. The cross-module PR resolves the path into a real
+  handle via AYResource's `.ayatlas` loader.
+- `include/AY2D.h` umbrella adds `AYSpriteSheet.h`.
+- `unittest/CMakeLists.txt` adds `Test_SpriteSheet.cpp`.
+
+**Tests** (`unittest/Test_SpriteSheet.cpp` — 2 cases / ~80 CHECK):
+
+1. `UvRectMatchesTileUVForSampleTileIds` — sweep 16 tile
+   ids; `sheet.uvRect(tileId).minX` etc. match
+   `tileUV(tileId, sheet.atlas).uMin/uMax/vMin/vMax` exactly.
+   Verifies the wrapped path is identical to the
+   `AYTileSamplerUV::tileUV` reference.
+2. `StructFieldLayoutAndCopySemantics` — `atlas` is the
+   first field (offset 0); default `texturePath` is empty;
+   default `atlas` is invalid (zero dims); copy semantics
+   produce a deep copy (`std::string` provides the copy
+   ctor). `sizeof(SpriteSheet) >= sizeof(AtlasDesc)` and
+   `>= sizeof(std::string)` sanity.
+
+All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
++ Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2) untouched.
+
+- §11.2: bgfx-leak guard stays green. `AYSpriteSheet.h`
+  includes `<cstdint>` + `<string>` + `aymath/MathTypes.h` +
+  `AYAtlasDesc.h` + `AYTileSamplerUV.h` — all bgfx-clean.
+- §13.18: This changelog entry. Front-matter bumped to v0.1.16.
+  Total tests: **23 TEST_SUITE / 841 CHECK assertions PASS** (was
+  22 / 769 at v0.1.15; +1 suite, +72 CHECK).
+
+**Open follow-ups** (unchanged from §13.17 + §13.PF):
+
 - Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
 - Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
 
