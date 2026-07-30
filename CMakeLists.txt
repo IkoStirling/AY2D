@@ -178,4 +178,4 @@ else()
         "skipping enable_testing/add_subdirectory for Phase 0.")
 endif()
 
-message(STATUS "AY2D v0.1.20 (P3I.3 L-7 four-invariant test coverage + A-2 reshape) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
+message(STATUS "AY2D v0.1.21 (P3I.4 World2DSnapshot::diff + O(1) epoch fast path, Phase 3I ship) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")

@@ -1,19 +1,19 @@
 # AY2D 项目 AI 工作注意事项
 
 > **注意**：AY2D 是独立子模块，遵循本文件定义的规则。AYTest 是独立测试框架库，位于 `AYTest/CLAUDE.md`。
-> **权威设计**：[`design.md`](design.md)（v0.1.20, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.22 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18 + §18.7 P3I.2 model + §13.22 P3I.3 L-7 coverage）。代码与 design.md 不一致时，design.md 优先。
+> **权威设计**：[`design.md`](design.md)（v0.1.21, 2026-07-30，含工业级审核 patch F-1..F-19 + Changelog §13.1..§13.23 + §13.PF pre-flight retractions + Phase 3C counter wiring §14 + Phase 3D batch tile-fill §15 + Phase 3E world↔cell math §16 + Phase 3F sprite culling §17 + Phase 3G chunk-source budget §18 + §18.7 P3I.2 model + §13.22 P3I.3 L-7 coverage + §13.23 P3I.4 snapshot diff）。代码与 design.md 不一致时，design.md 优先。
 
-## 当前状态 — P3I.3 in-AY2D L-7 four-invariant test coverage (A-2 reshaped, 2026-07-30)
+## 当前状态 — P3I.4 in-AY2D `World2DSnapshot::diff` (A-9, 2026-07-30, **Phase 3I ship**)
 
-- `design.md` 是权威设计（v0.1.20 + audit F-1..F-19 + Changelog §13.1..§13.22 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G + §18.7 P3I.2 model + §13.22 P3I.3 L-7 + KI-3I-1 + KI-3I-2）。代码与 design.md 不一致时，design.md 优先。
+- `design.md` 是权威设计（v0.1.21 + audit F-1..F-19 + Changelog §13.1..§13.23 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G + §18.7 P3I.2 model + §13.22 P3I.3 L-7 + §13.23 P3I.4 snapshot diff + KI-3I-1 + KI-3I-2）。代码与 design.md 不一致时，design.md 优先。
 - 子模块 HEAD = P3I.3：`OrthographicCamera::isPixelPerfectSafe()` 四个 invariant 现在完全覆盖（positive baseline + 3 个 negative + viewport-scale 缺口填补 + 半 texel 双轴扫描 + layerMask 正交性）。**A-2 reshape**：原计划 "add layerMask API" → "test-only coverage"（已有 public field 直接 round-trip，新增 setter/getter 违反 POD 风格 L-3I-6）。**零 surface 变更**（只动 `unittest/Test_OrthographicCamera.cpp`）。
-- `unittest/` 现在有 **27** 个 test 文件 / **933** CHECK assertions PASS（P3I.2 26/903 → P3I.3 27/933 = +0 suite, +30 CHECK；3× consecutive green locked；bgfx-leak guard green）。`OrthographicCamera` suite 新增 4 case（`L7_PixelPerfectSafe_AllFourInvariantsHold_True` / `L7_PixelPerfectUnsafe_NonIntegerViewportScale` / `L7_PixelPerfectUnsafe_HalfTexelOffset_Rejection` / `L7_LayerMaskRoundTripsThroughAssignment`）。
-- 锁行为（§3 + §3.2 + §13.20 + §13.21 + §13.22 + §18.7）：L-3I-6 POD 风格持续生效（不引入 setter/getter）；§13.21 L-3I-1..L-3I-7 持续生效；L-7 invariant 4-condition AND 现在被测试套覆盖。
+- `unittest/` 现在有 **28** 个 test 文件 / **990** CHECK assertions PASS（P3I.3 27/933 → P3I.4 28/990 = +1 suite, +57 CHECK；3× consecutive **incremental** green locked；bgfx-leak guard green；cold-configure side deferred to 3J env PR per do_cmake.bat VCPKG_INSTALLED_DIR gap）。新增 `Test_World2DSnapshotDiff` 走真 wired delta（8 case：epoch-fast-path / add / remove / swap-modified / ABA-different-gen / mixed-batch-sorted / non-mutating-no-epoch-bump / default-old-all-added）。
+- 锁行为（§3.4 + §13.14 / §13.19 + §13.21 + §13.22 + §13.23 + §18.7）：L-3I-7..L-3I-11 全部生效（epoch fast path / same-world 前置 / ABA `(id, gen)` key / sort+two-pointer / 未来 mutator forward lock）；§13.21 L-3I-1..L-3I-7 持续生效；§13.14 / §13.19 `TilemapEntryView` 形状锁守住；`TilemapBinding` 仍 deprecated。
 - 不破坏 P3A / P3B / P3C / P3D / P3E / P3F / P3G / Phase 5 / P3H.2 / P3G.2a / P3G.1 partial / P3D.2 / P3H.1 / P3H.3 / P3I.1 / P3I.2 任何已有测试。
 - **R-10 lock 守住**：AY2D 没有 AYAnimation include / link。
 - `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath AYLog)` 持续生效。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（21 public headers scanned, 0 leaks；P3I.3 零公共头变更）。
-- **Phase 3I 计划 4 slice** (P3I.1 blockedTileIds / P3I.2 removeTilemap purge / P3I.3 L-7 coverage / P3I.4 snapshot diff)。P3I.1 + P3I.2 + P3I.3 已 ship；最后 P3I.4 按 plan 执行。跨模块 PR (CM-1..CM-5) 仍按 `design.md` §4.2.1 deferred。**KI-3I-1** (`eraseByKey` evictions_lru 不 bump) deferred to Phase 3J.
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（21 public headers scanned, 0 leaks；P3I.4 公共头增量仅 `World2DSnapshot::resourceEpoch` 字段 + `diff` 方法 + 新 POD `World2DSnapshotDiff` + `ModifiedEntry` inner struct，无 bgfx 路径）。
+- **Phase 3I 完整 ship** (4/4 slice: P3I.1 blockedTileIds / P3I.2 removeTilemap purge / P3I.3 L-7 coverage / P3I.4 snapshot diff)。跨模块 PR (CM-1..CM-5) 仍按 `design.md` §4.2.1 deferred。**KI-3I-1** (`eraseByKey` evictions_lru 不 bump) deferred to Phase 3J。**3J env PR** (operational, not functional): cold-configure do_cmake.bat `VCPKG_INSTALLED_DIR` env 透传 deferred to 3J start.
 
 ## 重要规则
 

@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3I.3 ship (L-7 four-invariant test coverage + A-2 reshape; §13.22). P3I.2 (removeTilemap purge, §13.21 + §18.7) and P3I.1 (blockedTileIds, §13.20) and §13.PF C6 → C6-R1 amendment still in the chain.
-> **Version**: v0.1.20 (2026-07-30).
+> **Status**: P3I.4 ship (World2DSnapshot::diff + resourceEpoch O(1) fast path; §13.23). P3I.3 (L-7 coverage, §13.22), P3I.2 (removeTilemap purge, §13.21 + §18.7), P3I.1 (blockedTileIds, §13.20), and §13.PF C6 → C6-R1 amendment still in the chain.
+> **Version**: v0.1.21 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -3063,6 +3063,187 @@ flat for the cross-module consumer (a future
   remains deferred to Phase 3J.
 - A-2 (the original "add layerMask API" entry) is now
   **closed-by-reshape**; no follow-up.
+
+### 13.23 P3I.4 — `World2DSnapshot::diff` + O(1) epoch fast path (v0.1.21)
+
+> Phase 3I.4 closes A-9: a snapshot-diff helper that
+> downstream systems (e.g. the future `RenderSystem2D`
+> cross-module PR, the editor's undo stack) can use to
+> answer "what changed in the world since the previous
+> snapshot?" without walking the full `entries` vector
+> every frame. **No cross-module PR.** Stays inside the
+> AY2D submodule.
+
+**New surface** (minimal, §11.2 audit-disciplined):
+
+| Symbol | Returns | Purpose |
+|---|---|---|
+| `World2DSnapshot::resourceEpoch` | `uint64_t` | New public field. Copy of `world.resourceEpoch` at `build()` time. |
+| `World2DSnapshot::diff(old)` | `World2DSnapshotDiff` | New method. O(1) fast path on matching `resourceEpoch`; sort + two-pointer linear merge otherwise. **Not `noexcept`** (allocates three `std::vector`s). |
+| `World2DSnapshotDiff::ModifiedEntry` | `struct` | New POD. Carries the common `handle` + `oldLayer/newLayer/oldSortingKey/newSortingKey` for a swap. |
+| `World2DSnapshotDiff::added` | `std::vector<TilemapEntryView>` | New in `*this`, not in `old`. |
+| `World2DSnapshotDiff::removed` | `std::vector<TilemapEntryView>` | In `old`, not in `*this`. |
+| `World2DSnapshotDiff::modified` | `std::vector<ModifiedEntry>` | In both, `(layer, sortingKey)` differs. |
+| `World2DSnapshotDiff::empty()` | `bool noexcept` | True iff all three vectors are empty. |
+
+**Surface delta: 1 field + 1 method + 1 new POD type + 3
+new vectors + 1 helper.** No new types outside the
+`World2DSnapshot` family, no new headers, no new
+dependencies. The shape of `TilemapEntryView` (§13.14 /
+§13.19) is untouched; the sizeof static_assert at
+`Test_ForeachTilemapView.cpp:57-64` still holds.
+
+**L-3I-7..L-3I-10 invariant locks** (recorded here so the
+plan agent's gates are reproducible from the docs alone):
+
+- **L-3I-7 (O(1) epoch fast path)** — when
+  `*this.resourceEpoch == old.resourceEpoch`, the result
+  is `World2DSnapshotDiff{}` and the function does NOT
+  walk the `entries` vectors. The precondition (same
+  world) is a docs lock — see L-3I-8. The fast path is
+  asserted by `SameEpoch_DiffIsEmpty_FastPath`.
+- **L-3I-8 (same-world precondition)** — `diff` is only
+  well-defined when both snapshots come from the same
+  `World2D` instance. Cross-world `diff` is undefined
+  because `resourceEpoch` is a per-world counter that
+  can collide. A consumer that swaps worlds is expected
+  to drop both snapshots and rebuild. The lock is a
+  docs-only precondition; a `worldId` field on the
+  snapshot is **deliberately not added** to avoid
+  snapshot-shape churn (a follow-up P3J candidate if
+  cross-world diff becomes a real need).
+- **L-3I-9 (ABA + `(id, gen)` key)** — `World2D` ids are
+  monotonic (never reused; `_nextTilemapId` always
+  advances). The ABA guard lives in `generation`:
+  `removeTilemap` bumps the generation of the *slot*
+  even though the slot is gone, so any future add has a
+  fresh generation. For `diff` this means: an old handle
+  and a new handle at the SAME id are impossible; ABA
+  manifests as different ids, different generations, and
+  the `(id, generation)` sort+merge key keeps them
+  apart. The `ABA_SameIdDifferentGeneration_…` case
+  asserts the resulting added/removed partition.
+- **L-3I-10 (sort + two-pointer merge)** — the three
+  result vectors are sorted by `(id, generation)`
+  ascending. The merge is a single linear walk over two
+  sorted `vector<const TilemapEntryView*>` index arrays
+  — the underlying `entries` vectors are never modified
+  (so `diff` is genuinely const). No hash map; O(N log N)
+  for the sort + O(N) for the merge.
+- **L-3I-11 (forward lock on layer/sortingKey mutators)**
+  — any future `World2D` mutator that writes
+  `layer`/`sortingKey` MUST bump `resourceEpoch` and
+  MUST be listed in §3.4 alongside `addTilemap` /
+  `removeTilemap` / `swapTilemap`. The epoch fast path
+  relies on the invariant "matching epoch == matching
+  entries". The Gate G4 grep on the pre-slice-4 working
+  tree was the sanity check; a future slice that adds
+  a new mutator must redo the gate.
+
+**Why `not noexcept`** — `diff` allocates three
+`std::vector`s. The remaining public methods on
+`World2D` / `World2DSnapshot` are `noexcept`; `diff` is
+the one documented exception. The rationale is in the
+header docstring at the declaration; §13.23 records it
+here for grep-ability.
+
+**Why `TilemapBinding` is NOT reused** — the deprecated
+`TilemapBinding` struct (P3H.2 §13.14) carries the
+fields needed for `added` / `removed` but does not
+distinguish "old" from "new" in the `modified` case.
+`World2DSnapshotDiff::ModifiedEntry` exists precisely
+to carry the (old, new) pair, so reusing
+`TilemapBinding` would either lose information or
+require a second struct. The deprecation lock holds.
+
+**Tests** (`Test_World2DSnapshotDiff.cpp`, suite
+`World2DSnapshotDiff`, 8 cases / ~57 CHECK):
+
+1. `SameEpoch_DiffIsEmpty_FastPath` (4 CHECK) — L-3I-7
+   lock: same epoch → empty diff.
+2. `AddTilemap_ShowsUpInAdded` (4 CHECK) — new handle
+   lands in `added`; `removed` and `modified` empty.
+3. `RemoveTilemap_ShowsUpInRemoved` (4 CHECK) — old
+   handle lands in `removed` with original generation.
+4. `SwapTilemap_ShowsUpInModified_OldNewFieldsCorrect`
+   (4 CHECK) — `modified[0]` carries the exact
+   (oldLayer, newLayer, oldSortingKey, newSortingKey).
+5. `ABA_SameIdDifferentGeneration_…` (8 CHECK) — L-3I-9
+   lock: remove + re-add goes to `removed` + `added`,
+   never `modified`. `id` is monotonic (not reused) so
+   the assertion is on `(id, generation)`.
+6. `MixedBatch_DeterministicOrder_SortedByIdThen…` (6
+   CHECK) — L-3I-10 lock: 2 removes + 1 swap; the
+   `removed` vector is strictly ascending by `id`.
+7. `DiffIsNonMutating_AndDoesNotBumpEpoch` (4 CHECK) —
+   §3.4 + const lock: diff does not touch
+   `resourceEpoch`; `s2_again.diff(s1_again)` (same
+   world, same epoch) hits the fast path.
+8. `DefaultConstructedSnapshot_AsOldBaseline_YieldsAll…`
+   (6 CHECK) — L-3I-8 cold-start lock: `old = {}` (epoch
+   0) vs a 3-entry world (epoch 3) yields all 3 in
+   `added`.
+
+Total tests: **28 TEST_SUITE / 990 CHECK assertions
+PASS** (was 27 / 933 at v0.1.20; +1 suite, +57 CHECK;
+3× consecutive incremental green locked; bgfx-leak guard
+green; cold-configure sanity check deferred to 3J
+environment-passing PR per the do_cmake.bat
+`VCPKG_INSTALLED_DIR` gap noted in the wrap-up commit).
+
+**Files modified**:
+
+- `include/AYWorld2DSnapshot.h` (+~70 lines: 1 new
+  field, 1 new method decl, the
+  `World2DSnapshotDiff` POD moved before
+  `World2DSnapshot` so the return type is complete at
+  declaration; +~50 lines net; net 3 files
+  modified + 1 new file).
+- `src/AYWorld2DSnapshot.cpp` (+~80 lines:
+  `build()` now copies `resourceEpoch`; new
+  `diff()` impl using `std::vector<const
+  TilemapEntryView*>` indices + `std::sort` + two-pointer
+  linear walk; new `#include <algorithm>` /
+  `<utility>`).
+- `unittest/Test_World2DSnapshotDiff.cpp` (NEW, ~210 lines).
+- `unittest/CMakeLists.txt` (`+1` test source line).
+
+**Files NOT touched**: `TilemapEntryView` (§13.14 /
+§13.19 shape lock intact; sizeof static_assert
+unaffected), `TilemapBinding` (deprecated; no
+resurrection), `World2D` body (`addTilemap` /
+`removeTilemap` / `swapTilemap` unchanged; §3.4 epoch
+discipline is the foundation of L-3I-7's fast path),
+root `CMakeLists.txt` / `.gitmodules` (handled by the
+root-bump commit).
+
+**Open follow-ups** (after P3I.4):
+
+- Phase 5 follow-ups still open (cross-module PR
+  territory): see §13.20 — unchanged.
+- **Phase 3I ships complete** with this commit. The
+  four-slice plan (P3I.1 / P3I.2 / P3I.3 / P3I.4) is
+  fully closed.
+- Cross-module PRs (CM-1..CM-5) still deferred per
+  §4.2.1.
+- KI-3I-1 (`eraseByKey` not bumping `evictions_lru`)
+  remains deferred to Phase 3J.
+- **3J env PR** (operational, not functional): the
+  cold-configure side of P3I.4 lock #2 hit a
+  `do_cmake.bat` env-passing gap (`VCPKG_INSTALLED_DIR`
+  not in `vcvars64.bat`'s default env). 3J starts with a
+  small wrapper fix to make cold-configure reproducible
+  from a clean build dir without losing the per-shell
+  vcpkg cache.
+- **Phase 3J candidates** (next in-AY2D residue):
+  A-1 (TileAnimation batch state, 5 case / 30 CHECK),
+  A-3 (SpriteDrawCmd POD layout static_assert, 6
+  case / 12 CHECK), A-8 (Sprite batch state helper),
+  A-10 (AtlasDesc validator), A-12 (`EvictionPolicy`
+  enum reserved values), A-7 (`TilemapLoadState` enum
+  test), A-11 (`ChunkRequestHandle` wrap-around),
+  A-6 (chunk-row coalesce), KI-3I-1 fix
+  (`eraseByKey` evictions_lru bump), 3J env PR.
 
 ---
 
