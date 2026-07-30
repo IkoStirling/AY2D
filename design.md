@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: Phase 3G ship + pre-flight retractions applied (R-3G.1/R-3G.4 §8.1 corrections; v0.1.11-pending). Cross-module PRs still deferred per §4.2.1.
-> **Version**: v0.1.10 (2026-07-30); pre-flight retractions logged in §13.PF (version bump ships with slice 1 docs).
+> **Status**: Phase 5 ship (collision types + adapter + flagsAtRaw Empty fix; §13.13). Cross-module PRs still deferred per §4.2.1; pre-flight retractions from §13.PF landed in Phase 5 code.
+> **Version**: v0.1.11 (2026-07-30).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -2107,6 +2107,108 @@ LRU `setCapacity` runtime control, no cross-module PRs)
   `flagsAtRaw` body to return `Empty`.
 - Slice 2 (P3H.2): ship `World2DSnapshot` value type +
   `TilemapEntryView`; deprecate `TilemapBinding`.
+- Slice 3 (P3G.2a): wire `maxChunksCpuSoftCap` (new field) +
+  `chunk_io_residency_reject` counter.
+- Slice 4 (P3G.1 partial): counter scaffolding +
+  `AY_LOG_WARN` on non-LRU `setBudget`.
+- Slice 5 (P3D.2): ship `Tilemap::aabbOfCell` centered on
+  `cellToWorld` per R-3E.5.
+- Slice 6 (P3H.1): ship `SpriteSheet = AtlasDesc + path`.
+- Slice 7 (P3H.3): ship `foreachTilemapView` read-only visitor.
+- Cross-module PRs (CM-1..CM-5) still deferred per §4.2.1.
+
+---
+
+### 13.13 v0.1.11 — 2026-07-30 (Phase 5 collision types + adapter — in-AY2D)
+
+**Phase**: 5 (in-AY2D scope only — collision interface + thin adapter,
+no resolver, no cross-module PRs)
+
+**Locked changes** (per §13.PF pre-flight retractions applied as code):
+
+- §8.1 (C7): `include/AY2D/AYTileCollision.h` expanded from 53 lines
+  (Phase 0 placeholder) to the full §8.1 type set:
+  - `Ray2D { origin, direction, tMin, pointAt(t) }` — `pointAt`
+    out-of-line in `src/AYTileCollision.cpp` (kept out-of-line for
+    future SIMD / hardware-quad fast paths).
+  - `RaycastHit2D { hit, t, cell, flags, point }` — default
+    `hit=false` is the "no hit" sentinel.
+  - `ITileCollisionQuery` abstract class — three virtuals:
+    `flagsAt(TileCoord)` (pure), `isBlocked(TileCoord)` (default
+    impl), `raycast(Ray2D, float)` (pure).
+- §8.1 (C6 / `Tilemap::flagsAtRaw` contract): body fixed from
+  `return 0u;` (None — a §8.1 contract violation; "None MUST NOT
+  be used to mean empty") to
+  `return static_cast<uint32_t>(CollisionFlags::Empty);` (1<<6).
+  Regression covered by `Test_TileCollisionQuery::FlagsAtRawReturnsEmptyNotNone`.
+- §8.1 (C6 / default `isBlocked` formula corrected):
+  `flagsAt(c) != CollisionFlags::Empty`. The pre-Phase-5 form
+  `flagsAt(c) & mask != Empty` was always true (`x & mask`
+  cannot equal `Empty` when `Empty` is not in `mask`). Phase 5
+  ships the corrected form as the in-class default.
+- §11 Phase 5 row exit gate: `include/AY2D/AYTilemapCollisionAdapter.h`
+  + `src/AYTilemapCollisionAdapter.cpp` implement the only
+  in-AY2D concrete `ITileCollisionQuery`. `flagsAt` delegates to
+  `Tilemap::flagsAtRaw`. `raycast` is the §11 placeholder
+  (always miss — `hit=false`). A real axis-aligned tile-grid
+  walker lands with the consumer-side cross-module PR (§4.2.1 to
+  AYPhysics maintainer).
+- §13.PF (C8 / `TileCoord` deviation): the shipped interface
+  uses `TileCoord` (consistent with all AY2D code per
+  `AYTileCoord.h:5-14` deliberate refusal of `IVector2`) instead
+  of `IVector2` per the §8.1 doc text. §16.4 permits int↔int
+  equivalence; the deviation is logged but is not a breaking
+  change.
+- `include/AY2D.h` umbrella adds `AYTilemapCollisionAdapter.h`.
+- `CMakeLists.txt` adds 2 new `.cpp` to `SRC_FILES`
+  (`AYTileCollision.cpp` + `AYTilemapCollisionAdapter.cpp`).
+- `unittest/CMakeLists.txt` adds `Test_TileCollisionQuery.cpp`.
+
+**Tests** (`unittest/Test_TileCollisionQuery.cpp` — 7 cases / 22 CHECK):
+
+1. `Ray2DPointAtParametrics` — `pointAt(t)` returns `origin + t *
+   direction`; verifies t=0, t=1, t=0.5, t=-1 (no clamp).
+2. `RaycastHit2DDefaultIsNoHit` — default `hit=false`, `t=0`, no
+   cell, no flags, no point.
+3. `AdapterFlagsAtEmptyAndIsBlockedFalse` — adapter mirrors
+   `flagsAtRaw`'s `Empty`; inherited `isBlocked` returns false.
+4. `FlagsAtRawReturnsEmptyNotNone` — regression for §13.PF (C6):
+   body MUST return `CollisionFlags::Empty` (1<<6) not
+   `CollisionFlags::None` (0). Also verifies OOB cells return
+   `Empty`.
+5. `AdapterRaycastAlwaysMiss` — §11 Phase 5 row placeholder:
+   always `hit=false`.
+6. `TileCoordRoundTrip` — §13.PF (C8): shipped interface uses
+   `TileCoord`, not `IVector2`. Round-trip preserves int32 fields.
+7. `AdapterOutOfRangeCellReturnsEmpty` — `flagsAtRaw` ignores the
+   `cell` arg today (Phase 5 placeholder); adapter does not
+   crash on OOB; returns `Empty`.
+
+All existing tests (Phase 1+ stubs + Phase 2 functional +
+Phase 3A real-impl + Phase 3B animation + sprite + Phase 3C
+counter wiring + Phase 3D batch tile-fill + Phase 3E
+world↔cell math + Phase 3F sprite culling + Phase 3G chunk
+budget) untouched.
+
+- §11.2: bgfx-leak guard stays green. New public symbols
+  (`Ray2D` / `RaycastHit2D` / `ITileCollisionQuery` /
+  `TilemapCollisionQueryAdapter`) are exposed through
+  `AYTileCollision.h` + `AYTilemapCollisionAdapter.h`. Both
+  headers include only `<cstdint>` + `aymath/MathTypes.h` +
+  `AYTileCoord.h` — zero bgfx paths.
+- §13.13: This changelog entry. Front-matter bumped to v0.1.11.
+  Total tests: **18 TEST_SUITE / 538 CHECK assertions PASS** (was
+  17 / 516 at v0.1.10; +1 suite, +22 CHECK).
+
+**Open follow-ups** (unchanged from §13.12 + §13.PF):
+
+- Phase 5 follow-ups:
+  - `isBlocked` 真 wire (blocked-tile-id-set) — needs collision
+    resolver consumer (cross-module PR).
+  - Raycast walker — axis-aligned tile grid; cross-module PR to
+    AYPhysics maintainer.
+- Slice 2 (P3H.2): ship `World2DSnapshot` + `TilemapEntryView`;
+  deprecate `TilemapBinding`.
 - Slice 3 (P3G.2a): wire `maxChunksCpuSoftCap` (new field) +
   `chunk_io_residency_reject` counter.
 - Slice 4 (P3G.1 partial): counter scaffolding +
