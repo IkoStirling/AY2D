@@ -116,6 +116,11 @@ add_executable(${TEST_TARGET}
     # resource field). design.md §13.19. The visitor is
     # header-inline on World2D.
     Test_ForeachTilemapView.cpp
+    # P3I.1 in-AY2D tests - blockedTileIds + flagsAtRaw
+    # data-side wire (§13.20 / §13.PF C6-R1 amendment).
+    # Consumer side (AYPhysics isBlocked) stays cross-module
+    # per §4.2.1. No new deps.
+    Test_TilemapBlockedTileIds.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
