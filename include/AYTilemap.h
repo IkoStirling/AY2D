@@ -18,7 +18,7 @@
 // away; the chunk-source request stays in src/AYTilemap.cpp.
 
 #include <cstdint>
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
 #include "aymath/MathTypes.h"
@@ -80,17 +80,22 @@ struct Tilemap {
     int64_t lastTickUs    = 0;
     bool    hasBeenTicked = false;
 
-    // P3I.1 / §13.20: the set of tile ids that count as "blocked"
-    // for `flagsAtRaw` / `ITileCollisionQuery::isBlocked`. Source of
-    // truth = `.aytilemap` loader metadata (cross-module PR to
-    // AYResource, §4.2.1). The AY2D side ships no mutator API: until
-    // §11 fixes the ownership of "blocked list", it stays a passive
-    // public POD so consumers (tests today; AYPhysics consumer in a
-    // future cross-module PR) can populate it via the loader path.
-    // Empty by default — the empty-set fast path keeps v0.1.17
-    // behavior bit-identical for unpopulated tilemaps (§13.PF C6
+    // P3I.1 / §13.20 / R3: the per-tile-id collision-flags table. Source of
+    // truth = `.aytilemap` loader metadata (cross-module PR to AYResource,
+    // §4.2.1 / bridge §14.3). Maps a tile id to its `CollisionFlags` bitmask;
+    // a tile id absent from the table reads as `CollisionFlags::Empty`. This
+    // replaces the v0.1.17 bare `blockedTileIds` set (which could only express
+    // Solid-vs-Empty) with the full `CollisionFlags` bit space (OneWay /
+    // Slope_L / Slope_R / Hazard / Ladder), so `flagsAtRaw` returns the real
+    // per-tile flags instead of a binary Solid/Empty.
+    //
+    // The AY2D side ships no mutator API: until §11 fixes the ownership of the
+    // collision-flags table, it stays a passive public POD so consumers (tests
+    // today; AYPhysics consumer via the bridge adapter) populate it through
+    // the loader path. Empty by default — the empty-map fast path keeps
+    // v0.1.17 behavior bit-identical for unpopulated tilemaps (§13.PF C6
     // retained clause).
-    std::unordered_set<uint32_t> blockedTileIds{};
+    std::unordered_map<uint32_t, CollisionFlags> tileCollisionFlags{};
 
     // -----------------------------------------------------------------------
     // Member helpers
@@ -208,23 +213,26 @@ struct Tilemap {
     // hard-coded to `{0, 0}`); see P3E world-coord overloads above.
     [[nodiscard]] ayt::math::FRectangle aabbOfCell(TileCoord c) const noexcept;
 
-    // P3I.1 / §13.20 + §13.PF C6-R1 amendment: three-segment
+    // P3I.1 / §13.20 + §13.PF C6-R1 amendment + R3: three-segment
     // evaluation. The signature is unchanged (§13.PF C8 retained:
     // `TileCoord`, `noexcept`); only the body evolves.
     //
-    // 1. Out-of-range cells return `Empty` BEFORE the set lookup.
+    // 1. Out-of-range cells return `Empty` BEFORE the table lookup.
     //    Required because `getTile` is OOB-safe (returns
     //    `defaultTileId`); without this short-circuit a populated
-    //    `blockedTileIds` containing `defaultTileId` would silently
-    //    turn OOB cells into `Solid`, breaking the §8.1 contract
+    //    `tileCollisionFlags` containing `defaultTileId` would silently
+    //    turn OOB cells into a non-Empty flag, breaking the §8.1 contract
     //    that "no flag data == Empty".
-    // 2. Empty `blockedTileIds` returns `Empty` fast (preserves
+    // 2. Empty `tileCollisionFlags` returns `Empty` fast (preserves
     //    v0.1.17 behavior bit-identically for unpopulated tilemaps
     //    — §13.PF C6 retained clause).
-    // 3. Otherwise look up the cell's effective tile id; a hit
-    //    returns `Solid`, a miss returns `Empty`. The `None` ban
-    //    from §13.PF C6 is retained: this function never returns
-    //    `None` (0).
+    // 3. Otherwise look up the cell's effective tile id in the flags
+    //    table; a hit returns the stored `CollisionFlags` bitmask (which
+    //    may be Solid, OneWay, Slope_L|Solid, Hazard, etc.), a miss
+    //    returns `Empty`. The `None` ban from §13.PF C6 is retained: this
+    //    function never returns `None` (0) — stored flags are always a
+    //    non-zero bit (the loader normalizes unknown bits to Empty before
+    //    exposure).
     //
     // `isBlocked` is NOT overridden here — the
     // `ITileCollisionQuery::isBlocked` base default
@@ -232,11 +240,11 @@ struct Tilemap {
     // `TilemapCollisionQueryAdapter` is therefore a zero-change
     // pass-through (it calls this function via `flagsAt`).
     [[nodiscard]] uint32_t flagsAtRaw(TileCoord c) const noexcept {
-        if (!isInRange(c))            return static_cast<uint32_t>(CollisionFlags::Empty);
-        if (blockedTileIds.empty())   return static_cast<uint32_t>(CollisionFlags::Empty);
-        return blockedTileIds.find(getTile(c)) != blockedTileIds.end()
-             ? static_cast<uint32_t>(CollisionFlags::Solid)
-             : static_cast<uint32_t>(CollisionFlags::Empty);
+        if (!isInRange(c))               return static_cast<uint32_t>(CollisionFlags::Empty);
+        if (tileCollisionFlags.empty())  return static_cast<uint32_t>(CollisionFlags::Empty);
+        const auto it = tileCollisionFlags.find(getTile(c));
+        if (it == tileCollisionFlags.end()) return static_cast<uint32_t>(CollisionFlags::Empty);
+        return static_cast<uint32_t>(it->second);
     }
 
     // Replace the grid dimensions + storage width. Resets storage to

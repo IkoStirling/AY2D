@@ -122,7 +122,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{2, 1}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {16.0f, 48.0f}; // cell (0,1) center
@@ -149,7 +149,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{1, 1}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {80.0f, 48.0f}; // cell (2,1) center
@@ -176,7 +176,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{1, 2}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {48.0f, 16.0f}; // cell (1,0) center
@@ -203,7 +203,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{1, 1}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {48.0f, 80.0f}; // cell (1,2) center
@@ -235,7 +235,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{3, 3}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {16.0f, 16.0f}; // cell (0,0) center
@@ -267,7 +267,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{2, 1}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {16.0f, 48.0f};
@@ -313,7 +313,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{3, 1}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {16.0f, 48.0f};
@@ -337,7 +337,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{1, 1}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {16.0f, 48.0f};
@@ -362,7 +362,7 @@ TEST_SUITE(TileCollisionQuerySuite)
         m.tileWidth = 32;
         m.tileHeight = 32;
         m.setTile(TileCoord{2, 1}, 7u);
-        m.blockedTileIds.insert(7u);
+        m.tileCollisionFlags[7u] = CollisionFlags::Solid;
         TilemapCollisionQueryAdapter adapter(m);
         Ray2D r;
         r.origin    = {16.0f, 16.0f}; // cell (0,0) center
