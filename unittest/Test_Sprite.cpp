@@ -19,6 +19,9 @@
 #include <cmath>
 #include <cstdint>
 
+#include <algorithm>
+#include <vector>
+
 #include "AYSprite.h"
 #include "AYTest.h"
 
@@ -156,6 +159,105 @@ TEST_SUITE(SpriteSuite)
         CHECK(std::fabs(s.worldMatrix.m[5])         < 1e-6f);
         CHECK(std::fabs(s.worldMatrix.m[6])         < 1e-6f);
         CHECK(std::fabs(s.worldMatrix.m[7])         < 1e-6f);
+    }
+
+    // ----- P3J.8 / A-8 batch-state coverage (design.md §13.32) -----
+    //
+    // Six cases lock Sprite behavior when many sprites are managed
+    // together in a std::vector<Sprite>. No new helper is added
+    // (this is "verify what we have", mirroring P3I.3's A-2
+    // reshape to test-only).
+
+    TEST_CASE(BatchSort_PackedSortKeyAscending) {
+        std::vector<Sprite> v;
+        v.reserve(4);
+        Sprite a; a.layer = 2; v.push_back(a);
+        Sprite b; b.layer = 0; v.push_back(b);
+        Sprite c; c.layer = 3; v.push_back(c);
+        Sprite d; d.layer = 1; v.push_back(d);
+        std::stable_sort(v.begin(), v.end(),
+                         [](const Sprite& x, const Sprite& y) {
+                             return x.packedSortKey() < y.packedSortKey();
+                         });
+        CHECK_INT_EQ(static_cast<int>(v[0].layer), 0);
+        CHECK_INT_EQ(static_cast<int>(v[1].layer), 1);
+        CHECK_INT_EQ(static_cast<int>(v[2].layer), 2);
+        CHECK_INT_EQ(static_cast<int>(v[3].layer), 3);
+    }
+
+    TEST_CASE(BatchSort_SameLayer_SortBySortingKey) {
+        std::vector<Sprite> v;
+        v.reserve(4);
+        Sprite a; a.layer = 5; a.sortingKey = 0;  v.push_back(a);
+        Sprite b; b.layer = 5; b.sortingKey = 30; v.push_back(b);
+        Sprite c; c.layer = 5; c.sortingKey = 10; v.push_back(c);
+        Sprite d; d.layer = 5; d.sortingKey = 20; v.push_back(d);
+        std::stable_sort(v.begin(), v.end(),
+                         [](const Sprite& x, const Sprite& y) {
+                             return x.packedSortKey() < y.packedSortKey();
+                         });
+        CHECK_INT_EQ(static_cast<int>(v[0].sortingKey), 0);
+        CHECK_INT_EQ(static_cast<int>(v[1].sortingKey), 10);
+        CHECK_INT_EQ(static_cast<int>(v[2].sortingKey), 20);
+        CHECK_INT_EQ(static_cast<int>(v[3].sortingKey), 30);
+    }
+
+    TEST_CASE(BatchSort_SameLayerAndKey_StableKeepsInputOrder) {
+        std::vector<Sprite> v;
+        v.reserve(4);
+        // All same layer + same sortingKey. Use m[6] (translation X)
+        // as the input-order marker (per §踩坑 #25).
+        Sprite a; a.layer = 5; a.sortingKey = 100; a.worldMatrix.m[6] = 10.0f; v.push_back(a);
+        Sprite b; b.layer = 5; b.sortingKey = 100; b.worldMatrix.m[6] = 20.0f; v.push_back(b);
+        Sprite c; c.layer = 5; c.sortingKey = 100; c.worldMatrix.m[6] = 30.0f; v.push_back(c);
+        Sprite d; d.layer = 5; d.sortingKey = 100; d.worldMatrix.m[6] = 40.0f; v.push_back(d);
+        std::stable_sort(v.begin(), v.end(),
+                         [](const Sprite& x, const Sprite& y) {
+                             return x.packedSortKey() < y.packedSortKey();
+                         });
+        CHECK(std::fabs(v[0].worldMatrix.m[6] - 10.0f) < 1e-6f);
+        CHECK(std::fabs(v[1].worldMatrix.m[6] - 20.0f) < 1e-6f);
+        CHECK(std::fabs(v[2].worldMatrix.m[6] - 30.0f) < 1e-6f);
+        CHECK(std::fabs(v[3].worldMatrix.m[6] - 40.0f) < 1e-6f);
+    }
+
+    TEST_CASE(BatchFlip_ComposeIndependentAcrossEntries) {
+        std::vector<Sprite> v;
+        v.reserve(4);
+        Sprite a; a.flip = SpriteFlip::None;       v.push_back(a);
+        Sprite b; b.flip = SpriteFlip::Horizontal; v.push_back(b);
+        Sprite c; c.flip = SpriteFlip::Vertical;   v.push_back(c);
+        Sprite d; d.flip = SpriteFlip::Both;       v.push_back(d);
+        CHECK(v[0].flip == SpriteFlip::None);
+        CHECK(v[1].flip == SpriteFlip::Horizontal);
+        CHECK(v[2].flip == SpriteFlip::Vertical);
+        CHECK(v[3].flip == SpriteFlip::Both);
+    }
+
+    TEST_CASE(BatchLayer_5BitMask_PackedSortKey) {
+        // layer = 0xFF overflows into packedSortKey's high byte.
+        // The 5-bit mask (& 0x1Fu) clips layer to 0..31 for the
+        // packed value; the field itself reads back 0xFFu (no clamp).
+        Sprite s;
+        s.layer      = 0xFFu;
+        s.sortingKey = 0x00ABCDEFu;
+        CHECK_INT_EQ(static_cast<int>(s.layer), 0xFF);
+        // packedSortKey = (0xFF & 0x1F) << 24 | (0x00ABCDEF & 0x00FFFFFF)
+        //               = 0x1F000000 | 0x00ABCDEF
+        //               = 0x1FABCDEF
+        CHECK_INT_EQ(static_cast<int>(s.packedSortKey()), 0x1FABCDEF);
+    }
+
+    TEST_CASE(BatchColor_DefaultWhite_AcrossEntries) {
+        std::vector<Sprite> v;
+        v.reserve(4);
+        for (int i = 0; i < 4; ++i) v.emplace_back();
+        for (const auto& s : v) {
+            CHECK(std::fabs(s.colorR - 1.0f) < 1e-6f);
+            CHECK(std::fabs(s.colorG - 1.0f) < 1e-6f);
+            CHECK(std::fabs(s.colorB - 1.0f) < 1e-6f);
+            CHECK(std::fabs(s.colorA - 1.0f) < 1e-6f);
+        }
     }
 
 TEST_SUITE_END

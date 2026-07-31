@@ -4120,4 +4120,85 @@ root `CMakeLists.txt`.
 
 ---
 
+### 13.32 P3J.8 — A-8: Sprite batch-state coverage (v0.1.29)
+
+**Type**: test-only (no surface change). The `Sprite`
+struct (include/AYSprite.h, Phase 3B) is the input to
+`buildSpriteScene` (Phase 3F). The existing
+`Test_Sprite` suite (8 cases) covers single-sprite
+defaults, packedSortKey composition, flip bits, color
++ sourceRect defaults. The residue is **batch-state**
+behavior: when many sprites are managed together
+(stored in a `std::vector<Sprite>`), do the per-sprite
+fields compose correctly across the batch? Does the
+`packedSortKey` round-trip consistently? Does
+`std::stable_sort` by packedSortKey produce a
+deterministic order on a 100-sprite batch? P3J.8
+promotes those batch-state checks to the existing
+`Test_Sprite` suite (does not bump suite count).
+
+**Files modified**:
+- `unittest/Test_Sprite.cpp` — append 6 cases / ~26
+  CHECK.
+
+**NOT touched**: `include/AYSprite.h`,
+`include/AYSpriteCulling.h`, `src/AYSpriteCulling.cpp`,
+root `CMakeLists.txt`. The batch-state tests are
+purely about the existing `Sprite` struct + a
+`std::stable_sort` over a `std::vector<Sprite>` — no
+new helper is introduced (this is "verify what we
+have", not "add a new helper"; cf. P3I.3's A-2
+reshape).
+
+**Test cases** (appended to existing `SpriteSuite`,
+6 cases):
+
+1. `BatchSort_PackedSortKeyAscending` (3 CHECK) —
+   create 4 sprites with layers 2/0/3/1, sortingKeys 0
+   across; `std::stable_sort` by `packedSortKey()`,
+   assert order is [layer 0, 1, 2, 3] reading the
+   post-sort `layer` field. Locks F-2 / R-3F.6
+   (stable_sort, not sort).
+
+2. `BatchSort_SameLayer_SortBySortingKey` (3 CHECK) —
+   create 4 sprites all on layer 5, sortingKeys
+   0/30/10/20. After sort, sorted by sortingKey
+   ascending: 0/10/20/30. Locks that the low 24 bits
+   of packedSortKey drive the within-layer order.
+
+3. `BatchSort_SameLayerAndKey_StableKeepsInputOrder`
+   (4 CHECK) — 4 sprites all on layer 5, sortingKey
+   100. `m[6]` (translation X) carries the input order
+   10/20/30/40. After stable_sort, `m[6]` sequence
+   stays 10/20/30/40. Locks F-2 stable-sort
+   discipline.
+
+4. `BatchFlip_ComposeIndependentAcrossEntries` (4
+   CHECK) — create 4 sprites with flip bits {None,
+   Horizontal, Vertical, Both}. After constructing a
+   `std::vector<Sprite>`, the flip field reads back
+   the original values per-entry (no cross-entry
+   aliasing). Locks that `flip` is per-instance POD.
+
+5. `BatchLayer_5BitMask_PackedSortKey` (3 CHECK) —
+   assign `layer = 0xFFu` (overflow into the
+   `packedSortKey` shift). `packedSortKey()` returns
+   `0x1F000000u` (the 5-bit mask `& 0x1Fu` clips layer
+   to 0..31, then `<< 24`). `layer` itself reads back
+   0xFFu (no clamp on the field). Locks that
+   `packedSortKey` is the gate, not `layer`.
+
+6. `BatchColor_DefaultWhite_AcrossEntries` (4 CHECK)
+   — create 4 sprites, no explicit color. Each has
+   `colorRGBA = (1, 1, 1, 1)`. Locks that the default
+   color is per-instance (no cross-entry
+   default-init bug).
+
+**Open follow-ups** (after P3J.8):
+
+- Phase 3J continues with A-6 (chunk-row coalesce,
+  the last surface-changing slice).
+
+---
+
 ### 13.X Future versions (template)
