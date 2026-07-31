@@ -211,4 +211,92 @@ TEST_SUITE(TilemapAnimationSuite)
         CHECK_INT_EQ(static_cast<int>(t.animationState.elapsedMs[2]), 0);
     }
 
+    // ----- P3J.4 / A-1 batch-state coverage (design.md §13.28) -----
+    //
+    // Five cases lock the batch-tick invariant: 100 entries all
+    // advance in lock-step, no cross-entry aliasing on state vectors,
+    // ensureStateSize lazy-grows exactly once on the first real tick,
+    // table extent stays unchanged across ticks, and a huge delta
+    // caps cleanly at the loop boundary (no elapsed accumulation
+    // overflow / no frame index runaway).
+
+    TEST_CASE(BatchTick_AnimatesAllEntriesExactlyOnce) {
+        Tilemap t;
+        // Register 100 entries (tileIds 0..99), each with 3 frames
+        // of 100 ms. Tick at 100 ms advances every entry's frame
+        // by exactly one slot (frameIdx 0 -> 1, elapsedMs reset to 0).
+        for (uint32_t i = 0; i < 100u; ++i) {
+            setAnimationEntry(t, i, {TileFrame{i * 10u,        100u},
+                                     TileFrame{i * 10u + 1u,  100u},
+                                     TileFrame{i * 10u + 2u,  100u}});
+        }
+        tickTilemapAnimation(t, 0);                 // baseline
+        tickTilemapAnimation(t, 100'000);           // 100 ms delta
+        // Every entry advanced exactly once.
+        for (uint32_t i = 0; i < 100u; ++i) {
+            CHECK_INT_EQ(static_cast<int>(t.animationState.currentFrameIdx[i]), 1);
+            CHECK_INT_EQ(static_cast<int>(t.animationState.elapsedMs[i]), 0);
+        }
+    }
+
+    TEST_CASE(BatchTick_NoCrossEntryAliasing) {
+        Tilemap t;
+        setAnimationEntry(t, 0, {TileFrame{10, 10}, TileFrame{11, 10}});
+        setAnimationEntry(t, 1, {TileFrame{20, 30}, TileFrame{21, 30}});
+        tickTilemapAnimation(t, 0);
+        tickTilemapAnimation(t, 20'000);            // 20 ms delta
+        // Tile 0: 20 ms = A (10) + B (10) = full cycle -> back to A.
+        // Tile 1: 20 ms < 30 ms -> still at C.
+        CHECK_INT_EQ(static_cast<int>(t.animationState.currentFrameIdx[0]), 0);
+        CHECK_INT_EQ(static_cast<int>(t.animationState.elapsedMs[0]), 0);
+        CHECK_INT_EQ(static_cast<int>(t.animationState.currentFrameIdx[1]), 0);
+        CHECK_INT_EQ(static_cast<int>(t.animationState.elapsedMs[1]), 20);
+    }
+
+    TEST_CASE(BatchTick_EnsureStateSizeLazyGrow) {
+        Tilemap t;
+        // Fresh: state vectors are empty.
+        CHECK_INT_EQ(static_cast<int>(t.animationState.currentFrameIdx.size()), 0);
+        for (uint32_t i = 0; i < 100u; ++i) {
+            setAnimationEntry(t, i, {TileFrame{i, 10u}});
+        }
+        // Baseline tick: ensureStateSize runs even on the no-advance
+        // path, so state size matches the table extent.
+        tickTilemapAnimation(t, 0);
+        CHECK_INT_EQ(static_cast<int>(t.animationState.currentFrameIdx.size()), 100);
+        CHECK_INT_EQ(static_cast<int>(t.animationState.elapsedMs.size()), 100);
+        // Real tick: state size stays at 100 (no per-entry resize).
+        tickTilemapAnimation(t, 10'000);
+        CHECK_INT_EQ(static_cast<int>(t.animationState.currentFrameIdx.size()), 100);
+        CHECK_INT_EQ(static_cast<int>(t.animationState.elapsedMs.size()), 100);
+    }
+
+    TEST_CASE(BatchTick_TableExtentUnchangedAfterTick) {
+        Tilemap t;
+        for (uint32_t i = 0; i < 100u; ++i) {
+            setAnimationEntry(t, i, {TileFrame{i, 50u}, TileFrame{i + 100u, 50u}});
+        }
+        tickTilemapAnimation(t, 0);
+        for (int k = 0; k < 5; ++k) {
+            tickTilemapAnimation(t, (k + 1) * 50'000);
+        }
+        CHECK_INT_EQ(static_cast<int>(t.animationTable.size()), 100);
+    }
+
+    TEST_CASE(BatchTick_LargeDeltaCapsAtLoopBoundary) {
+        Tilemap t;
+        // 4 frames of 10 ms each = 40 ms loop.
+        setAnimationEntry(t, 0, {TileFrame{100, 10},
+                                 TileFrame{101, 10},
+                                 TileFrame{102, 10},
+                                 TileFrame{103, 10}});
+        tickTilemapAnimation(t, 0);
+        // 10 s delta = 10 000 ms / 40 ms = 250 full loops.
+        tickTilemapAnimation(t, 10'000'000);
+        // After 250 full loops, frameIdx wraps back to 0; elapsedMs
+        // is exactly 0 (all 10 000 ms is consumed by frame durations).
+        CHECK_INT_EQ(static_cast<int>(t.animationState.currentFrameIdx[0]), 0);
+        CHECK_INT_EQ(static_cast<int>(t.animationState.elapsedMs[0]), 0);
+    }
+
 TEST_SUITE_END

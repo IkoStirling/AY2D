@@ -3839,4 +3839,85 @@ root `CMakeLists.txt`, `.gitmodules`.
 
 ---
 
+### 13.28 P3J.4 — A-1: TileAnimation batch-state coverage (v0.1.25)
+
+**Type**: test-only (no surface change). Phase 3B shipped
+`tickTilemapAnimation` (src/AYTilemapAnimation.cpp) with
+the §7.2 integer-ms remainder accumulator and the
+`ensureStateSize` lazy-grow helper. The existing
+`Test_TilemapAnimation` suite (10 cases) covers single-
+tile + 2-tile animation behavior, zero-duration no-op,
+reversed-clock clamp, first-tick baseline, etc. The
+remaining residue is the **batch-tick invariant**: when
+many tiles (e.g. 100) all carry animations of varying
+durations and frame counts, the batch tick must (a)
+walk each entry exactly once, (b) advance each entry
+independently (no cross-entry aliasing on
+`currentFrameIdx` / `elapsedMs`), (c) size
+`animationState` to the table extent on the first
+real tick, not before, and (d) leave the table
+extent unchanged after the tick.
+
+**Files modified**:
+- `unittest/Test_TilemapAnimation.cpp` — append 5
+  cases / ~30 CHECK (does not bump suite count;
+  reuses the existing `TilemapAnimationSuite`).
+
+**NOT touched**: `src/AYTilemapAnimation.cpp` (zero
+surface change), `include/AYTileAnimation.h`,
+`include/AYTilemap.h` (the existing
+`hasBeenTicked` flag is the gate; no new state).
+
+**Test cases** (appended to existing
+`TilemapAnimationSuite`, 5 cases):
+
+1. `BatchTick_AnimatesAllEntriesExactlyOnce` (6 CHECK)
+   — register animations on tileIds 0..99 (100 entries,
+   each with 3 frames of 100 ms). Initial tick at
+   t=0 (baseline, no advance). Tick at t=100ms: each
+   of 100 entries advances `currentFrameIdx` from 0 to
+   1; `elapsedMs` resets to 0. Assert uniform
+   advancement across all 100 entries (no entry lags
+   behind). The lock is "one batch tick = one frame
+   advance per animated entry".
+
+2. `BatchTick_NoCrossEntryAliasing` (4 CHECK) — register
+   tileId 0 with frames [A=10ms, B=10ms] and tileId 1
+   with frames [C=30ms, D=30ms]. Tick at t=20ms: tile 0
+   advances A->B->A (20ms total, two cycles), tile 1
+   stays at C (30ms > 20ms). Assert tile 0
+   `currentFrameIdx == 0` (back to A after wrap), tile
+   1 `currentFrameIdx == 0` (still C). Locks per-entry
+   state independence.
+
+3. `BatchTick_EnsureStateSizeLazyGrow` (3 CHECK) —
+   fresh Tilemap: `animationState.currentFrameIdx.size()
+   == 0`. Tick at t=0 (baseline) — state size grows to
+   100 (the table extent). Tick at t=10ms — state size
+   stays at 100. Locks that `ensureStateSize` is called
+   exactly once on the first real tick, not per-entry.
+
+4. `BatchTick_TableExtentUnchangedAfterTick` (2 CHECK)
+   — same setup as case 1. After 5 ticks of 100 ms
+   each, `animationTable.size() == 100`. The tick
+   mutates state, not the table.
+
+5. `BatchTick_LargeDeltaCapsAtLoopBoundary` (3 CHECK)
+   — register tile 0 with 4 frames of 10 ms. Tick at
+   t=10s (10_000ms = 1000 cycles). State: elapsed=0,
+   `currentFrameIdx == 0` (back to frame 0 after full
+   loop). Locks that a huge delta does not advance the
+   frame index past the loop boundary or leave stale
+   `elapsedMs` accumulation.
+
+**Open follow-ups** (after P3J.4):
+
+- Phase 3J continues with A-12 (EvictionPolicy reserved
+  values), A-7 (TilemapLoadState enum test), A-11
+  (ChunkRequestHandle wrap-around), A-8 (Sprite batch
+  state helper), A-6 (chunk-row coalesce, the last
+  surface-changing slice).
+
+---
+
 ### 13.X Future versions (template)
