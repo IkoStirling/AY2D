@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3I.4 ship (World2DSnapshot::diff + resourceEpoch O(1) fast path; §13.23). P3I.3 (L-7 coverage, §13.22), P3I.2 (removeTilemap purge, §13.21 + §18.7), P3I.1 (blockedTileIds, §13.20), and §13.PF C6 → C6-R1 amendment still in the chain.
-> **Version**: v0.1.21 (2026-07-30).
+> **Status**: P3J.9 ship (InMemoryTilemapChunkSource::requestChunkRow bulk+per-coord dedup; §13.33). All nine Phase 3J slices in §13.24..§13.33 + J-env root ops (`do_cmake.bat` VCPKG env forwarding) shipped; v0.1.30. Phase 3I tail §13.20..§13.23 + §13.PF C6 → C6-R1 amendment carried. **Phase 3K / next in-AY2D residue = none** (P3I + P3J cleared all listed residue); next direction = cross-module CM-1..CM-5 (AYRenderer / AYResource / AYEntity) per user "不急着集成" still deferred.
+> **Version**: v0.1.30 (2026-07-31).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -4319,6 +4319,31 @@ test/source-specific extension), `Tilemap`,
 - Phase 3J plan complete: 9 test-only/ops + 1
   surface-changing slice (this one) + 1 root ops
   commit (`do_cmake.bat` env forwarding).
+
+---
+
+### 13.34 v0.1.30-hygiene — 2026-07-31 (front-matter version sync — C3 residue)
+
+Front-matter sync only. CLAUDE.md and CMakeLists.txt already advertised
+`v0.1.30 (Phase 3J ship)`; `design.md §0` still said `v0.1.21 (P3I.4
+ship)`. The two surfaces diverged at P3J trailer commit `eea085c` —
+trailer updated CLAUDE.md + CMakeLists but not the design front-matter.
+
+**Surface changes**
+
+- `design.md` front-matter (this file, lines 3–4):
+  - `**Status**`: P3I.4 ship → P3J.9 ship with full P3J slice index +
+    `Phase 3K = none` pointer.
+  - `**Version**`: `v0.1.21 (2026-07-30)` → `v0.1.30 (2026-07-31)`.
+
+**NOT changed** (still historical P0 wording, intentionally left):
+
+- `> **Scope of this PR**: design document only. Submodule registration,
+  CMake entries, and source files are intentionally **not** part of this
+  commit.` — that line describes Phase 0 (v0.1) and is now misleading; a
+  future hygiene commit can rewrite it. Not part of this slice.
+
+**Locks**: none touched. This is purely a `design.md` text sync.
 
 ---
 
