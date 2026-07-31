@@ -3920,4 +3920,78 @@ surface change), `include/AYTileAnimation.h`,
 
 ---
 
+### 13.29 P3J.5 — A-12: `EvictionPolicy` enum reserved values (v0.1.26)
+
+**Type**: test-only (no surface change). The
+`EvictionPolicy` enum (`include/AYTilemapBudget.h`) ships
+with three values (`LRU = 0`, `Distance = 1`,
+`TimeWindow = 2`), backed by `uint8_t` (256 distinct
+codes available). Phase 4 streaming PR (R-3G.1) will
+extend the set with at least one new policy (the design
+calls out Distance + TimeWindow as candidates, but both
+are scaffold-only today). To make that extension safe,
+P3J.5 locks (a) the underlying-type discipline
+(`sizeof(EvictionPolicy) == 1`), (b) the canonical code
+point of each existing value, and (c) the convention
+that new policies occupy codes `0x03..0xFE` — `0xFF` is
+reserved as a sentinel for "unset / invalid budget
+policy" and must never alias any current or future
+wired policy.
+
+**Files modified**:
+- `unittest/Test_EvictionPolicyEnum.cpp` (NEW) — 5
+  cases / ~10 CHECK.
+- `unittest/CMakeLists.txt` — `+1` line.
+
+**NOT touched**: `include/AYTilemapBudget.h`,
+`src/`, root `CMakeLists.txt`.
+
+**Test cases** (`Test_EvictionPolicyEnum`, suite
+`EvictionPolicyEnum`, 5 cases):
+
+1. `EvictionPolicy_UnderlyingTypeIsUint8` (compile-time)
+   — `static_assert(sizeof(EvictionPolicy) == 1u)` and
+   `static_assert(std::is_same_v<std::underlying_type_t<EvictionPolicy>,
+   uint8_t>)`. Locks the 256-code budget.
+
+2. `EvictionPolicy_CanonicalCodes_ZeroOneTwo` (3 CHECK)
+   — `static_cast<uint8_t>(LRU) == 0`,
+   `static_cast<uint8_t>(Distance) == 1`,
+   `static_cast<uint8_t>(TimeWindow) == 2`. The canonical
+   ordering matters because the existing
+   `setBudget(b)` switch on `EvictionPolicy` compares
+   against `LRU` directly (returning false for any
+   non-LRU policy).
+
+3. `EvictionPolicy_FFIsReservedSentinel` (2 CHECK) —
+   `static_cast<uint8_t>(0xFF) > 2` (256 > 3, true) and
+   `0xFF != LRU/Distance/TimeWindow`. Locks the
+   convention that future additions go in the
+   0x03..0xFE range and `0xFF` is reserved.
+
+4. `EvictionPolicy_TilemapBudget_DefaultIsLRU` (3 CHECK)
+   — default `TilemapBudget{}` has
+   `eviction == EvictionPolicy::LRU`, `maxChunksLoaded
+   == 1024`, `maxIoBytesPerSec == 64 * 1024 * 1024`.
+   Locks the §18.1 default values.
+
+5. `EvictionPolicy_SwitchPolicy_FallsThroughForReserved`
+   (compile-time) — `static_assert` that the cast
+   `static_cast<EvictionPolicy>(0xFF)` is a valid
+   enum value **in C++ language terms** (no
+   out-of-range error), but its comparison against
+   `LRU` / `Distance` / `TimeWindow` returns false at
+   runtime (semantically invalid). Locks the
+   "reserved sentinel is a valid bit pattern but not a
+   wired policy" invariant.
+
+**Open follow-ups** (after P3J.5):
+
+- Phase 3J continues with A-7 (TilemapLoadState enum
+  test), A-11 (ChunkRequestHandle wrap-around), A-8
+  (Sprite batch state helper), A-6 (chunk-row coalesce,
+  the last surface-changing slice).
+
+---
+
 ### 13.X Future versions (template)

@@ -153,6 +153,11 @@ add_executable(${TEST_TARGET}
     # Test_TileSamplerUV locks 2/6 rejects + happy path;
     # P3J.3 promotes the remaining 4 rejects + boundary.
     Test_AtlasDescValidator.cpp
+    # P3J.5 in-AY2D tests - EvictionPolicy enum reserved
+    # values (uint8_t underlying type + canonical codes
+    # 0/1/2 + 0xFF reserved sentinel + TilemapBudget defaults).
+    # design.md §13.29. Test-only, no surface change.
+    Test_EvictionPolicyEnum.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
