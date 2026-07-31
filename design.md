@@ -3616,4 +3616,141 @@ counter change), root `CMakeLists.txt` / `.gitmodules`.
 
 ---
 
+### 13.26 P3J.2 — A-3: `SpriteDrawCmd` POD layout static_assert (v0.1.23)
+
+**Type**: test-only + 1 comment-only header fixup (no
+surface change to the POD itself). The POD
+`SpriteDrawCmd` (defined in `include/AYSpriteDrawCmd.h`,
+shipped Phase 3F v0.1.9) has a manual layout comment
+listing its **88 B** shape. That shape was wrong.
+
+**Layout drift discovered during P3J.2**:
+the comment says 88 B but the actual `sizeof` on the
+shipped toolchain (MSVC + x64 + `Float3x3` 36B align 4 +
+`FVector2` 16B align 16 + `FVector4` 16B align 16) is
+**112 B**. `alignof(SpriteDrawCmd)` is **16** (driven by
+the 16-B SIMD alignment of `FVector2` /
+`FVector4`). The drift is an artifact of P3F assuming
+`FVector2` is 8 B aligned-to-4; MSVC's `FVector2` is
+**16 B aligned-to-16**, which inserts 12 B of padding
+between `worldMatrix` and `sourceRectMin`, 8 B after
+`layerMaskSnapshot`, etc. P3H.1 踩坑 #33 surfaced the
+same MSVC alignment surprise on `SpriteSheet`'s
+`std::string`; P3J.2 surfaces it again on the
+`FVector2` family.
+
+**Action**:
+
+- `include/AYSpriteDrawCmd.h` — layout comment updated
+  to 112 B / align 16 / explicit field offsets (still a
+  comment; the struct body is unchanged).
+- `unittest/Test_SpriteDrawCmdLayout.cpp` (NEW) — locks
+  the corrected layout.
+
+**Correct layout** (verified by `offsetof` probe on
+the shipped toolchain):
+
+```
+offset  field                 size  cumulative
+   0    packedSortKey          4B        4B
+   4    worldMatrix           36B       40B  (no pad; align 4)
+  40    [pad to 16-align]      8B       48B
+  48    sourceRectMin         16B       64B
+  64    sourceRectMax         16B       80B
+  80    colorRGBA             16B       96B
+  96    flip                   1B       97B
+  97    [pad to 4-align]       3B      100B
+ 100    layerMaskSnapshot      4B      104B
+ 104    [trail pad to 16]      8B      112B
+```
+
+**The locks** (test-time, all inside the test TU):
+
+- `sizeof(SpriteDrawCmd) == 112` (post-correction;
+  the layout comment is now authoritative).
+- `alignof(SpriteDrawCmd) == 16` (driven by FVector2
+  / FVector4 SIMD alignment).
+- `std::is_trivially_copyable<SpriteDrawCmd>::value`
+  (`std::vector<SpriteDrawCmd>` requires trivially
+  copyable for memcpy-on-realloc; this is the
+  pre-condition for the §17.3 "no allocation" promise).
+- `std::is_standard_layout<SpriteDrawCmd>::value`
+  (cross-module PR to AYRenderer `DrawItem::payload`
+  needs C-compatible layout for the future
+  `RenderSystem2D` translator; §17.3).
+- `offsetof(SpriteDrawCmd, packedSortKey) == 0`
+  (first field, anchor).
+- `offsetof(SpriteDrawCmd, worldMatrix) == 4` (after
+  u32, before any padding because Float3x3 alignment is
+  4).
+- `offsetof(SpriteDrawCmd, sourceRectMin) == 48`
+  (4 + 36 + 8-byte pad-to-16-align).
+- `offsetof(SpriteDrawCmd, sourceRectMax) == 64`.
+- `offsetof(SpriteDrawCmd, colorRGBA) == 80`.
+- `offsetof(SpriteDrawCmd, flip) == 96`.
+- `offsetof(SpriteDrawCmd, layerMaskSnapshot) == 100`.
+
+The first four are `static_assert` (compile-time, no
+overhead). The `offsetof` checks are runtime
+CHECK_INT_EQ because `offsetof` is a runtime-evaluated
+macro on MSVC.
+
+**Why this works for `SpriteDrawCmd` but failed for
+`SpriteSheet`** (踩坑 #33): `SpriteDrawCmd` contains
+only scalar arithmetic types (`uint32_t`, `uint8_t`,
+`Float3x3`, `FVector2`, `FVector4`) — no `std::string`,
+no `std::vector`, no user-defined types with non-trivial
+destructors. MSVC's `std::is_trivially_copyable` and
+`std::is_standard_layout` therefore return `true` for
+`SpriteDrawCmd` directly. `SpriteSheet` wraps
+`AtlasDesc + std::string texturePath`; MSVC's
+`std::string` is **not** trivially copyable in any
+recent standard library, so the same asserts failed.
+P3H.1 踩坑 #33 documented the workaround for
+`SpriteSheet`; `SpriteDrawCmd` does not need it.
+
+**Files modified**:
+- `include/AYSpriteDrawCmd.h` — layout comment updated
+  from 88 B / 9-float matrix to 112 B / explicit offset
+  table. Struct body unchanged.
+- `unittest/Test_SpriteDrawCmdLayout.cpp` (NEW) — 7
+  cases / ~13 CHECK.
+- `unittest/CMakeLists.txt` — `+1` line.
+
+**NOT touched**: `src/`, root `CMakeLists.txt`,
+`.gitmodules`.
+
+**Test cases** (`Test_SpriteDrawCmdLayout`, suite
+`SpriteDrawCmdLayout`, 7 cases):
+
+1. `SpriteDrawCmd_StaticAssert_SizeIs112Bytes` (compile-
+   time) — four `static_assert`s: sizeof == 112, alignof
+   == 16, is_trivially_copyable, is_standard_layout.
+2. `SpriteDrawCmd_OffsetOf_PackedSortKey_IsZero`
+   (1 CHECK) — first-field anchor.
+3. `SpriteDrawCmd_OffsetOf_WorldMatrix_IsFour`
+   (1 CHECK) — u32 + Float3x3 boundary.
+4. `SpriteDrawCmd_OffsetOf_SourceRectMin_Is48`
+   (1 CHECK) — 4 + 36 + 8-byte pad.
+5. `SpriteDrawCmd_OffsetOf_ColorRGBA_Is80`
+   (1 CHECK) — 48 + 16 + 16 = 80.
+6. `SpriteDrawCmd_OffsetOf_LayerMaskSnapshot_Is100`
+   (1 CHECK) — 96 + 4 (flip + pad) = 100.
+7. `SpriteDrawCmd_DefaultConstructed_AllDefaultsMatch`
+   (5 CHECK) — packedSortKey=0, sourceRectMin=(0,0),
+   sourceRectMax=(1,1), colorRGBA=(1,1,1,1),
+   layerMaskSnapshot=0; worldMatrix == identity;
+   flip == 0. Locks the default field values.
+
+**Open follow-ups** (after P3J.2):
+
+- Phase 3J continues with A-10 (AtlasDesc validator),
+  A-1 (TileAnimation batch state), A-12 (EvictionPolicy
+  reserved values), A-7 (TilemapLoadState enum test),
+  A-11 (ChunkRequestHandle wrap-around), A-8 (Sprite
+  batch state helper), A-6 (chunk-row coalesce, the
+  last surface-changing slice).
+
+---
+
 ### 13.X Future versions (template)

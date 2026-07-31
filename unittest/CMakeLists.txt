@@ -140,6 +140,12 @@ add_executable(${TEST_TARGET}
     # (evictIfNeeded / evictDownTo) use direct cache.erase()
     # so the new bump is not double-counted.
     Test_ChunkSourceEraseByKey.cpp
+    # P3J.2 in-AY2D tests - SpriteDrawCmd POD layout
+    # static_assert (sizeof 88B + trivially_copyable +
+    # standard_layout + offsetof audit). design.md §13.26.
+    # Test-only, no surface change. Layout lock promotes the
+    # existing §17.3 layout comment to compile-time + runtime.
+    Test_SpriteDrawCmdLayout.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

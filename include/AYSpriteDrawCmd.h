@@ -14,18 +14,24 @@
 // Stdlib-only headers + in-AY2D AYMath + AYSprite. No bgfx,
 // no bx, no AYRenderer.
 //
-// Layout (design.md §17.3):
-//   * 1 u32 (4B)            packedSortKey
-//   * pad (0B; Float3x3 alignment handled by struct align)
-//   * 9 floats (36B)        worldMatrix  (Float3x3 row-major flat)
-//   * 2 FVector2 (16B)      sourceRectMin + sourceRectMax
-//   * 1 FVector4 (16B)      colorRGBA
-//   * 1 u8 + 3B pad         flip (SpriteFlip bitfield, padded
-//                            to next 4B for the u32 below)
-//   * 1 u32 (4B)            layerMaskSnapshot
-//   --------------------
-//   ~ 88 B per cmd, all-static. std::vector<SpriteDrawCmd>
-//   reuses the same allocator as std::vector<Sprite>.
+// Layout (design.md §17.3, corrected by §13.26 / P3J.2):
+//   The total struct size is 112 B with alignof 16 (driven by
+//   FVector2 / FVector4 SIMD alignment on MSVC). Earlier P3F
+//   estimates assumed 88 B / align 4; that was wrong.
+//   Field-by-field:
+//     offset   0   packedSortKey          u32  (4B)
+//     offset   4   worldMatrix            Float3x3 (36B, align 4)
+//     offset  40   [pad to 16-align]      8B
+//     offset  48   sourceRectMin          FVector2 (16B, align 16)
+//     offset  64   sourceRectMax          FVector2 (16B, align 16)
+//     offset  80   colorRGBA              FVector4 (16B, align 16)
+//     offset  96   flip                   u8 (1B)
+//     offset  97   [pad to 4-align]       3B
+//     offset 100   layerMaskSnapshot      u32 (4B)
+//     offset 104   [trail pad to 16]      8B
+//     total    112 B
+//   std::vector<SpriteDrawCmd> reuses the same allocator as
+//   std::vector<Sprite>.
 
 #include <cstdint>
 
