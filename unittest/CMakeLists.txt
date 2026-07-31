@@ -146,6 +146,13 @@ add_executable(${TEST_TARGET}
     # Test-only, no surface change. Layout lock promotes the
     # existing §17.3 layout comment to compile-time + runtime.
     Test_SpriteDrawCmdLayout.cpp
+    # P3J.3 in-AY2D tests - AtlasDesc validator coverage
+    # (isValidAtlasDesc 6 reject conditions + 1 happy path +
+    # L-8 gutter boundary + filter/wrap defaults). design.md
+    # §13.27. Test-only, no surface change. Existing
+    # Test_TileSamplerUV locks 2/6 rejects + happy path;
+    # P3J.3 promotes the remaining 4 rejects + boundary.
+    Test_AtlasDescValidator.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

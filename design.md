@@ -3753,4 +3753,90 @@ P3H.1 踩坑 #33 documented the workaround for
 
 ---
 
+### 13.27 P3J.3 — A-10: `AtlasDesc` validator coverage (v0.1.24)
+
+**Type**: test-only (no surface change). `isValidAtlasDesc`
+shipped Phase 2 (design.md §5.5) with 6 reject
+conditions + 1 happy path. The existing
+`Test_TileSamplerUV` suite locks 2 reject cases plus
+the happy path; the remaining 4 reject cases +
+boundary conditions (gutter `==` `min/2`, gutter `>`
+`min/2`, non-divisible atlas/tile ratio, filter
+default) are not separately locked. P3J.3 promotes
+those to a dedicated `Test_AtlasDescValidator` suite.
+
+**The locks** (test-time, in the new test TU):
+
+- `isValidAtlasDesc` returns false on `atlasWidthTexels == 0`.
+- `isValidAtlasDesc` returns false on `atlasHeightTexels == 0`.
+- `isValidAtlasDesc` returns false on `tileWidthTexels == 0`.
+- `isValidAtlasDesc` returns false on `tileHeightTexels == 0`.
+- `isValidAtlasDesc` returns false on `tilesPerRow == 0`.
+- `isValidAtlasDesc` returns false on `tilesPerColumn == 0`.
+- `isValidAtlasDesc` returns false on atlas/tile ratio
+  mismatch (`atlasWidth != tileWidth * tilesPerRow`).
+- `isValidAtlasDesc` returns false on gutter too large
+  (`gutter >= min(tileWidth, tileHeight) / 2`).
+- `isValidAtlasDesc` boundary: gutter exactly equal to
+  `min/2 - 1` (the largest valid gutter) returns true;
+  gutter equal to `min/2` returns false (boundary).
+- `AtlasDesc{}` (default-init) returns false (all
+  fields zero, no tiles).
+- `AtlasDesc{}` with `tilesPerRow = tilesPerColumn = 0`
+  override returns false even when atlas dimensions
+  are non-zero (explicit tilesPerRow zero reject).
+
+**Files modified**:
+- `unittest/Test_AtlasDescValidator.cpp` (NEW) — 8
+  cases / ~22 CHECK.
+- `unittest/CMakeLists.txt` — `+1` line.
+
+**NOT touched**: `include/AYAtlasDesc.h` (zero surface
+change — `isValidAtlasDesc` body unchanged), `src/`,
+root `CMakeLists.txt`, `.gitmodules`.
+
+**Test cases** (`Test_AtlasDescValidator`, suite
+`AtlasDescValidator`, 8 cases):
+
+1. `AtlasDesc_Default_IsInvalid_AllFieldsZero` (1 CHECK)
+   — `AtlasDesc{}` returns false.
+2. `AtlasDesc_ZeroAtlasDimension_IsInvalid` (2 CHECK) —
+   zero width or zero height alone returns false.
+3. `AtlasDesc_ZeroTileDimension_IsInvalid` (2 CHECK) —
+   zero tileWidth or zero tileHeight alone returns false.
+4. `AtlasDesc_ZeroTilesPerRowColumn_IsInvalid` (2 CHECK)
+   — zero `tilesPerRow` or zero `tilesPerColumn` alone
+   returns false.
+5. `AtlasDesc_NonDivisibleAtlasTileRatio_IsInvalid`
+   (2 CHECK) — `atlasWidth = 100`, `tileWidth = 7`,
+   `tilesPerRow = 14` → 7*14=98 != 100 → false.
+   Reversed with `tilesPerRow = 100/7` (integer
+   truncation gives 14) → still false (must match
+   *exactly*, not with tolerance).
+6. `AtlasDesc_GutterTooLarge_IsInvalid` (2 CHECK) —
+   tile 16x16, gutter = 8 returns false
+   (`gutter >= 8 == 16/2`); gutter = 7 returns true
+   (largest valid gutter). Locks the L-8 boundary.
+7. `AtlasDesc_HappyPath_BilinearDefault_ReturnsTrue`
+   (3 CHECK) — `tilesPerRow = 4`, `tilesPerColumn = 4`,
+   `atlasWidth = atlasHeight = 64`, `tileWidth = tileHeight
+   = 16`, `gutter = 1`, default `filter == Bilinear` →
+   true. Plus two sanity reads on `filter` and `gutter`.
+8. `AtlasDesc_FilterAndWrapDefaultsMatch_Lock` (2 CHECK)
+   — default-constructed `AtlasDesc{}` has
+   `filter == TileFilter::Bilinear`, `wrapU == Clamp`,
+   `wrapV == Clamp`. Locks the §5.5 "default = Bilinear
+   + Clamp" sentence.
+
+**Open follow-ups** (after P3J.3):
+
+- Phase 3J continues with A-1 (TileAnimation batch
+  state), A-12 (EvictionPolicy reserved values),
+  A-7 (TilemapLoadState enum test), A-11
+  (ChunkRequestHandle wrap-around), A-8 (Sprite batch
+  state helper), A-6 (chunk-row coalesce, the last
+  surface-changing slice).
+
+---
+
 ### 13.X Future versions (template)
