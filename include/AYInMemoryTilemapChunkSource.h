@@ -65,6 +65,27 @@ public:
     [[nodiscard]] bool               isResident(ChunkCoord coord) const noexcept override;
     void                            cancelChunk(ChunkRequestHandle handle) noexcept override;
 
+    // P3J.9 / §13.33: bulk-request a contiguous row of chunks in
+    // one call. The row is half-open `[xStart, xEndExclusive)`;
+    // empty rows (`xEndExclusive <= xStart`) return an empty
+    // vector without touching `_pending` or the rate gate.
+    //
+    // The dedup rule: for each `(x, y)` in the row, if a
+    // request is already pending (present in `_pending`),
+    // the existing handle is returned and no new pending
+    // entry is added. Otherwise the call delegates to
+    // `requestChunk((x, y))` which charges the rate gate
+    // for `nominalChunkBytes` (§18.2) and allocates a
+    // fresh handle.
+    //
+    // This is purely in-AY2D dedup — backend-level IO
+    // batching (one syscall for the row) lands in the
+    // Phase 4 cross-module PR to AYResource.
+    [[nodiscard]] std::vector<ChunkRequestHandle>
+        requestChunkRow(int32_t y,
+                        int32_t xStart,
+                        int32_t xEndExclusive) noexcept;
+
     // P3I.2 / §13.21: drop every resident chunk + cancel every
     // pending load. Reuses `evictDownTo(0)` so the release path is
     // identical to normal capacity-driven eviction (L-3I-3 keeps

@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <chrono>
 #include <utility>
+#include <vector>
 
 #include "aylog/Logger.h"
 
@@ -211,6 +212,49 @@ ChunkRequestHandle InMemoryTilemapChunkSource::requestChunk(ChunkCoord coord) no
             std::chrono::steady_clock::now().time_since_epoch()).count());
     _pending.emplace(id, PendingEntry{coord, nowUs});
     return ChunkRequestHandle{idx, gen};
+}
+
+std::vector<ChunkRequestHandle>
+InMemoryTilemapChunkSource::requestChunkRow(int32_t y,
+                                            int32_t xStart,
+                                            int32_t xEndExclusive) noexcept {
+    // P3J.9 / §13.33: bulk-request a contiguous row of chunks.
+    // The row is half-open `[xStart, xEndExclusive)`; empty rows
+    // are an early return (no rate-gate charge, no pending insert).
+    std::vector<ChunkRequestHandle> out;
+    if (xEndExclusive <= xStart) return out;
+    out.reserve(static_cast<size_t>(xEndExclusive - xStart));
+
+    for (int32_t x = xStart; x < xEndExclusive; ++x) {
+        const ChunkCoord coord{x, y};
+        const MapKey key  = packKey(coord);
+
+        // P3J.9 dedup rule: if a request for this coord is already
+        // pending, return the existing handle and skip both the
+        // rate-gate charge and the pending-map insert. Multiple
+        // outstanding handles for the same coord (one per
+        // requestChunk call before any put lands) collapse to
+        // the first one issued.
+        ChunkRequestHandle existing{};
+        bool found = false;
+        for (const auto& kv : _pending) {
+            if (packKey(kv.second.coord) == key) {
+                existing = ChunkRequestHandle{kv.first};
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            out.push_back(existing);
+            continue;
+        }
+
+        // No pending entry: delegate to `requestChunk` so the
+        // rate-gate / pending / handle-allocation discipline
+        // stays in one place (single source of truth).
+        out.push_back(requestChunk(coord));
+    }
+    return out;
 }
 
 bool InMemoryTilemapChunkSource::tryGetChunk(ChunkCoord coord, ChunkData& out) noexcept {

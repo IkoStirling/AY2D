@@ -163,6 +163,12 @@ add_executable(${TEST_TARGET}
     # 0xFF reserved sentinel + Tilemap default Unloaded).
     # design.md §13.30. Test-only, no surface change.
     Test_TileLoadStateEnum.cpp
+    # P3J.9 in-AY2D tests - chunk-row coalesce
+    # (requestChunkRow half-open range + per-coord dedup +
+    # rate-gate honored per accepted chunk). design.md
+    # §13.33. The only surface-changing slice in Phase 3J;
+    # new method on InMemoryTilemapChunkSource.
+    Test_ChunkSourceRowCoalesce.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

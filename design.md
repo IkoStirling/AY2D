@@ -4201,4 +4201,125 @@ reshape).
 
 ---
 
+### 13.33 P3J.9 — A-6: chunk-row coalesce (v0.1.30)
+
+**Type**: surface-changing feat (new public method on
+`InMemoryTilemapChunkSource`). Closes the in-AY2D
+chunk-row residue: callers requesting many chunks in
+the same row (typical: streaming a tilemap row from
+camera-space) end up issuing N `requestChunk` calls,
+each producing a fresh handle and each charging the
+rate gate independently. P3J.9 adds
+`requestChunkRow(coord y, int32_t xStart, int32_t xEndExclusive)`
+which coalesces duplicates within the row: if a coord
+is already pending, the existing handle is returned
+instead of a new entry.
+
+**Surface** (new method, header-only doc):
+
+```cpp
+// include/AYInMemoryTilemapChunkSource.h
+[[nodiscard]] std::vector<ChunkRequestHandle>
+    requestChunkRow(ChunkCoord::value_type y,
+                    ChunkCoord::value_type xStart,
+                    ChunkCoord::value_type xEndExclusive) noexcept;
+```
+
+`ChunkCoord::value_type` is `int32_t` (per §6.2 lock).
+The row is half-open `[xStart, xEndExclusive)` (P3D
+discipline — mirrors `TileRect` half-open convention).
+Empty rows (`xEndExclusive <= xStart`) return an empty
+vector without touching `_pending` or the rate gate.
+
+**The coalesce rule** (per-coord):
+
+1. If `_pending` already contains a request for this
+   coord, return the existing handle (no new pending
+   entry, no rate-gate charge for this coord).
+2. Otherwise, fall through to `requestChunk(coord)` —
+   identical behavior to the per-coord path: allocates
+   a fresh handle, charges the rate gate for `nominalChunkBytes`
+   (P3G §18.2), and appends to `_pending`.
+
+The coalesce is **purely dedup within a frame**. Two
+distinct chunks in the same row that are not yet
+pending each get their own handle + charge (no
+"row-of-N costs one slot" optimization — that would
+require backend-level IO batching which lands in the
+Phase 4 cross-module PR to AYResource).
+
+**Files modified**:
+- `include/AYInMemoryTilemapChunkSource.h` —
+  `+~12` lines (method declaration + 14-line doc
+  block).
+- `src/AYInMemoryTilemapChunkSource.cpp` —
+  `+~25` lines (method body; loops over `[xStart,
+  xEndExclusive)`, dedupes, delegates to `requestChunk`).
+- `unittest/Test_ChunkSourceRowCoalesce.cpp` (NEW)
+  — 6 cases / ~20 CHECK.
+- `unittest/CMakeLists.txt` — `+1` line.
+- `design.md §13.33` (this entry) — docs commit
+  follows the feat commit.
+
+**NOT touched**: `ITilemapChunkSource` interface
+(public contract stays as-is; `requestChunkRow` is a
+test/source-specific extension), `Tilemap`,
+`World2D`, bgfx-leak guard (pure CPU), root
+`CMakeLists.txt`, `.gitmodules`.
+
+**Test cases** (`Test_ChunkSourceRowCoalesce`, suite
+`ChunkSourceRowCoalesce`, 6 cases):
+
+1. `RowRequest_AllNew_AllPending_HandlesDistinct`
+   (4 CHECK) — empty source, row `(y=0, xStart=0,
+   xEndExclusive=4)`. Expect 4 handles, all distinct,
+   all valid, all pending; rate gate charged 4x
+   (one `chunk_io_bytes` per chunk, since none were
+   pending before).
+
+2. `RowRequest_FullDuplicate_ReturnsExistingHandles`
+   (4 CHECK) — pre-issue 4 handles for `(0..3, 0)`
+   via direct `requestChunk`. Then call
+   `requestChunkRow(y=0, xStart=0, xEndExclusive=4)`.
+   Expect 4 handles returned, **identical** to the
+   pre-issued 4 (dedup). `_pending.size() == 4`
+   (unchanged); `chunk_io_bytes` unchanged (no new
+   charges).
+
+3. `RowRequest_PartialDuplicate_MixedBehavior` (4
+   CHECK) — pre-issue handle for `(1, 0)`. Call
+   `requestChunkRow(y=0, xStart=0, xEndExclusive=4)`.
+   Expect 4 handles: `(0,0)`, `(1,0)`, `(2,0)`,
+   `(3,0)` of which `(1,0)` matches the pre-existing
+   one and the other three are new. `_pending.size()
+   == 4` (3 new + 1 existing).
+
+4. `RowRequest_EmptyRange_NoOp` (2 CHECK) —
+   `requestChunkRow(y=0, xStart=5, xEndExclusive=5)`
+   returns empty vector; `_pending` and counters
+   unchanged.
+
+5. `RowRequest_NegativeRange_NoOp` (2 CHECK) —
+   `requestChunkRow(y=0, xStart=5, xEndExclusive=3)`
+   returns empty vector (half-open discipline).
+
+6. `RowRequest_RateGateHonored_PerChunkCharge`
+   (4 CHECK) — `setMaxIoBytesPerSec(N * nominal)` so
+   exactly N chunk charges fit. Row of N+1 chunks
+   issued via `requestChunkRow`: N succeed, 1
+   rejected at the gate. `chunk_io_reject == 1`.
+
+**Open follow-ups** (after P3J.9):
+
+- The chunk-row dedup covers the in-AY2D backend
+  (Phase 2 / P3G). The production
+  `AYResourceChunkSource` (Phase 4 cross-module PR)
+  can layer in IO-level row batching on top.
+- KI-3I-1 remains closed (P3J.1).
+- Phase 3J plan complete: 9 test-only/ops + 1
+  surface-changing slice (this one) + 1 root ops
+  commit (`do_cmake.bat` env forwarding).
+
+---
+
 ### 13.X Future versions (template)
