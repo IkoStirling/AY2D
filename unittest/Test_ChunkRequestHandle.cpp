@@ -92,4 +92,58 @@ TEST_SUITE(ChunkRequestHandleSuite)
         CHECK_INT_EQ((packed >> 24) & 0xFFu, gen);
     }
 
+    // ----- P3J.7 / A-11 wrap-around coverage (design.md §13.31) -----
+    //
+    // Four cases lock wrap-around at the 8-bit generation boundary
+    // (255 -> 256 wraps to 0 via the mask) and the 24-bit index
+    // boundary (0xFFFFFF -> 0x1000000 wraps to 0 == kInvalidId).
+
+    TEST_CASE(Generation_FF_Plus_One_Wraps_ToZero) {
+        ChunkRequestHandle maxGen{1u, 0xFFu};
+        CHECK_INT_EQ(maxGen.generation(), 0xFFu);
+
+        // 0x100 & 0xFF (kGenerationMask) == 0: the 9th bit is
+        // stripped by the mask. The wrap-around behavior is
+        // implicit in the mask discipline.
+        ChunkRequestHandle wrapped{1u, 0x100u};
+        CHECK_INT_EQ(wrapped.generation(), 0u);
+    }
+
+    TEST_CASE(Index_FFFFFF_Plus_One_Wraps_ToInvalid) {
+        // Pre-wrap: index = 0xFFFFFF, isValid == true.
+        ChunkRequestHandle pre{0xFFFFFFu, 1u};
+        CHECK_INT_EQ(pre.index(), 0xFFFFFFu);
+        CHECK(pre.isValid());
+
+        // Post-wrap: 0x1000000 & 0x00FFFFFF == 0 -> isValid == false.
+        // The chunk source must guard against this on the next
+        // requestChunk call (design.md §6.2 forward-lock).
+        ChunkRequestHandle post{0x1000000u, 1u};
+        CHECK_INT_EQ(post.index(), 0u);
+        CHECK_FALSE(post.isValid());
+    }
+
+    TEST_CASE(WrapAround_Equality_StillHoldsForSameIdAndGen) {
+        // Same index (1), different generation (0xFF vs 0):
+        // even though the generation wrapped, the packed ids
+        // differ. Equality is on the full packed id, not on
+        // the index alone.
+        ChunkRequestHandle preWrap {1u, 0xFFu};
+        ChunkRequestHandle postWrap{1u, 0u};
+        CHECK(preWrap != postWrap);
+        CHECK(preWrap.index() == postWrap.index());
+        CHECK(preWrap.generation() != postWrap.generation());
+    }
+
+    TEST_CASE(Pack_BoundaryValues_RoundTrip) {
+        // (0, 0) -> 0
+        CHECK_INT_EQ(ChunkRequestHandle::pack(0u, 0u), 0u);
+        // (0xFFFFFF, 0xFF) -> 0xFFFFFFFF (all bits set)
+        CHECK_INT_EQ(ChunkRequestHandle::pack(0xFFFFFFu, 0xFFu), 0xFFFFFFFFu);
+        // (1, 0) -> 1
+        CHECK_INT_EQ(ChunkRequestHandle::pack(1u, 0u), 1u);
+        // (1, 1) -> 0x01000001
+        CHECK_INT_EQ(ChunkRequestHandle::pack(1u, 1u), 0x01000001u);
+    }
+
 TEST_SUITE_END

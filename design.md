@@ -4054,4 +4054,70 @@ surface change), `src/`, root `CMakeLists.txt`.
 
 ---
 
+### 13.31 P3J.7 — A-11: `ChunkRequestHandle` wrap-around coverage (v0.1.28)
+
+**Type**: test-only (no surface change). The
+`ChunkRequestHandle` packs 24-bit index + 8-bit
+generation (include/AYChunkRequestHandle.h, Phase 3).
+The existing 10-case `Test_ChunkRequestHandle` suite
+covers pack/unpack, ABA guard, masking, but does not
+lock **wrap-around semantics** at the boundaries:
+generation 255 → 256 should wrap to 0 (8-bit mask),
+index 0xFFFFFF → 0x1000000 should wrap to 0 (the
+mask makes it 0; index 0 is then `kInvalidId`). P3J.7
+promotes those to two additional cases in the
+existing suite (does not bump suite count).
+
+**Files modified**:
+- `unittest/Test_ChunkRequestHandle.cpp` — append 4
+  cases / ~14 CHECK.
+
+**NOT touched**: `include/AYChunkRequestHandle.h` (zero
+surface change — wrap is implicit in the `& kMask`
+discipline already documented), `src/`,
+root `CMakeLists.txt`.
+
+**Test cases** (appended to existing
+`ChunkRequestHandleSuite`, 4 cases):
+
+1. `Generation_FF_Plus_One_Wraps_ToZero` (2 CHECK) —
+   `ChunkRequestHandle{1u, 0xFFu}.generation() == 0xFF`.
+   `ChunkRequestHandle{1u, 0x100u}.generation() == 0`
+   (the mask strips the 9th bit, leaving 0). Locks the
+   8-bit wrap-around behavior; consumers must
+   accept that generation 0 is reachable after wrap.
+
+2. `Index_FFFFFF_Plus_One_Wraps_ToInvalid` (3 CHECK) —
+   `ChunkRequestHandle{0xFFFFFFu, 1u}.index() ==
+   0xFFFFFFu`, `isValid() == true` (since index != 0).
+   `ChunkRequestHandle{0x1000000u, 1u}.index() == 0`
+   (24-bit mask strips the 25th bit), `isValid() ==
+   false` (index == 0 == kInvalidId). Locks the
+   "post-wrap index 0 is invalid" discipline. The
+   chunk source must guard against this when it
+   issues the next `requestChunk`.
+
+3. `WrapAround_Equality_StillHoldsForSameIdAndGen`
+   (2 CHECK) — `ChunkRequestHandle{1u, 0xFFu}` and
+   `ChunkRequestHandle{1u, 0u}` (post-wrap gen)
+   compare unequal even though both wrap to the
+   `0x01_000000`-equivalent bit pattern only on
+   the second. Locks that equality is on the full
+   packed id, not on the index alone (which would
+   collide after wrap).
+
+4. `Pack_BoundaryValues_RoundTrip` (4 CHECK) —
+   `(0, 0)` packs to 0, `(0xFFFFFF, 0xFF)` packs to
+   `0xFFFFFFFF`, `(1, 0)` packs to `1`, `(1, 1)`
+   packs to `0x01000001`. Locks the boundary bit
+   patterns of the packed representation.
+
+**Open follow-ups** (after P3J.7):
+
+- Phase 3J continues with A-8 (Sprite batch state
+  helper), A-6 (chunk-row coalesce, the last
+  surface-changing slice).
+
+---
+
 ### 13.X Future versions (template)
