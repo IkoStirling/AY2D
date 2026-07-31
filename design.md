@@ -3994,4 +3994,64 @@ wired policy.
 
 ---
 
+### 13.30 P3J.6 — A-7: `TileLoadState` enum coverage (v0.1.27)
+
+**Type**: test-only (no surface change). The
+`TileLoadState` enum (`include/AYTileLoadState.h`,
+shipped Phase 2 F-18) has 4 values (`Unloaded = 0`,
+`Loading = 1`, `Loaded = 2`, `Failed = 3`) backed by
+`uint8_t`. The enum is consumed by ECS inspectors +
+Editor Inspector (design.md §11 F-18). The existing
+`Test_Tilemap` suite uses 5 `CHECK(loadState == ...)`
+assertions across load paths but does **not** lock the
+enum's underlying-type discipline or the canonical code
+points. P3J.6 promotes those to a dedicated
+`Test_TileLoadStateEnum` suite, mirrors the A-12
+reserved-sentinel convention (0xFF reserved for future
+expansion).
+
+**Files modified**:
+- `unittest/Test_TileLoadStateEnum.cpp` (NEW) — 4
+  cases / ~10 CHECK.
+- `unittest/CMakeLists.txt` — `+1` line.
+
+**NOT touched**: `include/AYTileLoadState.h` (zero
+surface change), `src/`, root `CMakeLists.txt`.
+
+**Test cases** (`Test_TileLoadStateEnum`, suite
+`TileLoadStateEnum`, 4 cases):
+
+1. `TileLoadState_UnderlyingTypeIsUint8` (compile-time)
+   — `static_assert(sizeof(TileLoadState) == 1u)` +
+   `is_same<underlying_type_t<TileLoadState>, uint8_t>`.
+   Locks the 256-code budget.
+
+2. `TileLoadState_CanonicalCodes_ZeroOneTwoThree`
+   (4 CHECK) — `Unloaded == 0`, `Loading == 1`,
+   `Loaded == 2`, `Failed == 3`. Locks the §11 F-18
+   ordering, which the ECS Inspector relies on for
+   stable display IDs.
+
+3. `TileLoadState_FFIsReservedSentinel` (2 CHECK) —
+   `0xFF > 3` (strictly greater than highest wired
+   code, leaving 0x04..0xFE for future states) and
+   `0xFF != Unloaded/Loading/Loaded/Failed`.
+
+4. `TileLoadState_Tilemap_DefaultIsUnloaded` (3 CHECK)
+   — default `Tilemap{}` has
+   `loadState == TileLoadState::Unloaded`,
+   `tileWidth == 0`, `tileHeight == 0`,
+   `defaultTileId == 0`. Locks the §13.7 default state
+   on a fresh tilemap (used by the Inspector's "Unloaded"
+   badge on the editor's empty-tilemap state).
+
+**Open follow-ups** (after P3J.6):
+
+- Phase 3J continues with A-11 (ChunkRequestHandle
+  wrap-around), A-8 (Sprite batch state helper),
+  A-6 (chunk-row coalesce, the last surface-changing
+  slice).
+
+---
+
 ### 13.X Future versions (template)

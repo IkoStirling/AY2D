@@ -158,6 +158,11 @@ add_executable(${TEST_TARGET}
     # 0/1/2 + 0xFF reserved sentinel + TilemapBudget defaults).
     # design.md §13.29. Test-only, no surface change.
     Test_EvictionPolicyEnum.cpp
+    # P3J.6 in-AY2D tests - TileLoadState enum coverage
+    # (uint8_t underlying + canonical codes 0/1/2/3 +
+    # 0xFF reserved sentinel + Tilemap default Unloaded).
+    # design.md §13.30. Test-only, no surface change.
+    Test_TileLoadStateEnum.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE
