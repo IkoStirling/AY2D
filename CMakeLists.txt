@@ -178,4 +178,4 @@ else()
         "skipping enable_testing/add_subdirectory for Phase 0.")
 endif()
 
-message(STATUS "AY2D v0.1.30 (P3J.9 requestChunkRow bulk+dedup, Phase 3J ship) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
+message(STATUS "AY2D v0.1.31 (D3 raycast walker, Phase 3K ship) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")

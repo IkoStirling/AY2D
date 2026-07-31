@@ -1,7 +1,7 @@
 # AY2D — Design
 
-> **Status**: P3J.9 ship (InMemoryTilemapChunkSource::requestChunkRow bulk+per-coord dedup; §13.33). All nine Phase 3J slices in §13.24..§13.33 + J-env root ops (`do_cmake.bat` VCPKG env forwarding) shipped; v0.1.30. Phase 3I tail §13.20..§13.23 + §13.PF C6 → C6-R1 amendment carried. **Phase 3K / next in-AY2D residue = none** (P3I + P3J cleared all listed residue); next direction = cross-module CM-1..CM-5 (AYRenderer / AYResource / AYEntity) per user "不急着集成" still deferred.
-> **Version**: v0.1.30 (2026-07-31).
+> **Status**: D3 ship (TilemapCollisionQueryAdapter::raycast Amanatides-Woo 2D DDA walker; §13.35 + §8.1.1). All six L-3D-1..6 locks in effect; the §13.13 "always miss" placeholder evolved into a real geometry walker. P3I tail §13.20..§13.23 + §13.PF C6 → C6-R1 amendment + P3J §13.24..§13.33 (requestChunkRow bulk+dedup as the only surface-changing slice) + J-env root ops (`do_cmake.bat` VCPKG env forwarding) all carried. **Phase 3L / next in-AY2D residue = none** (Phase 3I + 3J + 3K trailer all clear); next direction = cross-module CM-1..CM-5 (AYRenderer / AYResource / AYEntity) per user "不急着集成" still deferred.
+> **Version**: v0.1.31 (2026-07-31).
 > **Authority**: This file is the source of truth for `AY2D` module architecture.  
 > **Scope of this PR**: design document only. Submodule registration, CMake entries, and source files are intentionally **not** part of this commit.
 
@@ -530,6 +530,59 @@ public:
 
 } // namespace ayt::ay2d
 ```
+
+#### 8.1.1 §13.35 D3 walker spec (in-AY2D geometry-only)
+
+The shipped `TilemapCollisionQueryAdapter::raycast` (§13.13 +
+§13.35) implements an **Amanatides-Woo 2D DDA** walker over the
+`Tilemap` grid. The walker is **geometry-only**: it finds the
+first cell whose `flagsAtRaw(c) != CollisionFlags::Empty`
+(L-3D-1) and reports a `RaycastHit2D`. The consumer-side
+resolver (broadphase, character controller, normal-based
+correction) lands via the cross-module PR (§4.2.1 to AYPhysics
+maintainer); the walker never invents a response.
+
+**Algorithm (high-level)**:
+
+1. Degenerate direction (`ray.direction == (0, 0)`) → return
+   `RaycastHit2D{}` (L-3D-3).
+2. Origin → cell via `worldToCell(ray.origin, cellOrigin={0,0},
+   tileW, tileH)`. If OOB, snap to nearest in-grid cell
+   (L-3D-4).
+3. Origin cell is **always** tested against `flagsAtRaw`. If
+   solid, return immediately with `hit.t = ray.tMin` and
+   `hit.point = ray.pointAt(tMin)` (L-3D-5 monotone).
+4. Step in the direction of the dominant axis (X or Y),
+   tracking `tNextX` / `tNextY` (parametric distances to the
+   next cell boundary along the ORIGINAL `ray.direction` —
+   L-3D-2 invariant `pointAt(t) == origin + t * direction`).
+5. Cells whose entry-t is `< ray.tMin` are skipped without
+   flag test (L-3D-5).
+6. Cells whose entry-t exceeds `maxDistance` cause early
+   exit (L-3D-6 inclusive boundary).
+7. The first cell whose `flagsAtRaw(c) != Empty` reports:
+   `hit.cell = c; hit.t = entry-t; hit.flags = flags;
+   hit.point = (boundary crossing on dominant axis, ray
+   pointAt(t) on the other axis)`.
+
+**Locks** (Appendix B; full text in §13.35):
+
+- **L-3D-1** early-exit predicate = `flagsAtRaw(c) != Empty`.
+- **L-3D-2** `hit.t` along ORIGINAL `ray.direction`; `pointAt`
+  invariant.
+- **L-3D-3** degenerate direction → no-hit sentinel.
+- **L-3D-4** OOB origin → snap to nearest in-grid cell.
+- **L-3D-5** `ray.tMin` semantics (cells with entry-t `< tMin`
+  skipped; origin cell always tested).
+- **L-3D-6** `maxDistance` hard cutoff (inclusive at boundary).
+
+**Doc-vs-code drift logged in §13.35 (NOT fixed here)**:
+the §8.1 doc block above shows a 4-param `bool raycast + out
++ layerMask` form that was dropped during Phase 5 ship. The
+shipped signature is the 2-param `RaycastHit2D raycast(Ray2D,
+float)` form. Future hygiene commit can sync. `RaycastHit2D`
+also lacks the doc's `normal` field (resolver consumer
+computes normals from cell geometry if needed).
 
 ### 8.2 No collision resolver in AY2D (locked)
 
@@ -4344,6 +4397,147 @@ trailer updated CLAUDE.md + CMakeLists but not the design front-matter.
   future hygiene commit can rewrite it. Not part of this slice.
 
 **Locks**: none touched. This is purely a `design.md` text sync.
+
+---
+
+### 13.35 D3 / A-7 — `TilemapCollisionQueryAdapter::raycast` Amanatides-Woo DDA walker (v0.1.31)
+
+**Phase**: D3 (in-AY2D residue — first non-P3I/non-P3J slice after
+Phase 3J ship trailer; Phase 3K trailer is this entry itself).
+
+**Slice**: replace §13.13 placeholder ("always miss") with an
+axis-aligned Amanatides-Woo 2D DDA walker inside the adapter.
+Geometry-only; no collision resolver per §8.2. The walker split
+mirrors the §13.20 P3I.1 precedent: data/query side in-AY2D,
+consumer side cross-module (§4.2.1 to AYPhysics maintainer).
+
+**Locked changes**:
+
+- `src/AYTilemapCollisionAdapter.cpp` — body of
+  `TilemapCollisionQueryAdapter::raycast` rewritten from
+  the 8-line placeholder (`return RaycastHit2D{};`) into a
+  ~110-line Amanatides-Woo 2D DDA walker. New includes:
+  `<cmath>`, `<limits>`, `"AYTileMath.h"` (for `worldToCell` /
+  `cellToWorld` / `isCellInWorldBounds`). Pure CPU geometry.
+- `include/AYTilemapCollisionAdapter.h` — `raycast` docblock
+  updated (~30 lines) with walker spec + L-3D-1..6 inline refs.
+  **No signature change** (`virtual RaycastHit2D raycast(Ray2D,
+  float maxDistance) const noexcept` unchanged); no new
+  includes; no vtable change (adapter stays POD-after-base).
+- `unittest/Test_TileCollisionQuery.cpp` — case 5
+  (`AdapterRaycastAlwaysMiss`) **reshaped** into the positive
+  baseline `AdapterRaycastHitsSolidCellEast`. 9 new cases
+  appended at suite end. No new TU; same suite
+  (`TileCollisionQuerySuite`).
+
+**NOT changed** (kept historical or cross-module):
+
+- `ITileCollisionQuery` interface (signature frozen by §13.PF C8).
+- `Ray2D` / `RaycastHit2D` types — stays 5 fields, no `normal`
+  (the doc §8.1 placeholder's `distance` + `normal` + `hit`
+  drift is logged below; **NOT fixed** in this slice).
+- `Tilemap::flagsAtRaw` body — walker only reads.
+- `bgfx-leak guard` — pure CPU; G2 pre-flight gate verified 0
+  bgfx/bx hits in `src/AYTilemapCollisionAdapter.cpp`.
+- `root CMakeLists.txt`, `.gitmodules`, other modules.
+
+**§8.1 doc-vs-code drift (logged, NOT fixed in this slice)**:
+
+The §8.1 doc block (`design.md:512-517`) shows a different
+`raycast` signature (`bool raycast(Ray2D, float,
+CollisionFlags layerMask, RaycastHit2D& out)`); the shipped
+signature is `RaycastHit2D raycast(Ray2D, float maxDistance)`.
+Three drift items logged for a future hygiene commit:
+
+1. `raycast` 4-param `bool + layerMask + out-param` form vs
+   shipped 2-param `RaycastHit2D by-value`. `layerMask` was
+   dropped during Phase 5 ship without a §13.PF entry.
+2. `RaycastHit2D` doc has `distance` + `normal`, no `hit`;
+   shipped has `hit` + `t` + `cell` + `flags` + `point`, no
+   `normal`.
+3. `Ray2D` doc has no `pointAt`; shipped adds it out-of-line.
+
+**Locks (Appendix B)**:
+
+- **L-3D-1** walker early-exit predicate =
+  `flagsAtRaw(c) != CollisionFlags::Empty`. Matches default
+  `isBlocked` per §13.PF C6-R1; reserved bits (`OneWay /
+  Hazard / Ladder / etc.`) all stop the walk today. Consumer
+  refines via the cross-module PR (§4.2.1).
+- **L-3D-2** returned `hit.t` is along the ORIGINAL
+  `ray.direction` (pre-normalization); `pointAt(t) == origin +
+  t * direction` always holds (matches §8.1 `Ray2D::pointAt`).
+- **L-3D-3** `ray.direction == (0, 0)` → return `RaycastHit2D{}`
+  (no-hit sentinel); no progress possible.
+- **L-3D-4** OOB origin → snap to nearest in-grid cell before
+  stepping. The walker then advances out of the grid → miss
+  unless a solid cell lies between snap-cell and grid edge
+  (impossible since snap-cell is in-grid by construction).
+- **L-3D-5** `ray.tMin` semantics: cells whose entry-t is
+  strictly less than `tMin` are skipped without flag test.
+  The origin cell is **always** tested (even when `tMin > 0`);
+  if solid, reported `t = tMin` (monotone: `t >= tMin` always).
+- **L-3D-6** `maxDistance` hard cutoff. A hit whose entry-t
+  exceeds `maxDistance` is reported as no-hit; `t ==
+  maxDistance` is inclusive (boundary hit reported).
+
+**Tests added / reshaped** (suite `TileCollisionQuerySuite`,
+was 7 cases / 22 CHECK → now 16 cases / 64 CHECK; +9 cases /
++42 CHECK; total AY2D 34 suite / 1372 CHECK → 34 suite / 1414
+CHECK):
+
+1. `AdapterRaycastHitsSolidCellEast` (reshape from
+   `AdapterRaycastAlwaysMiss`; 6 CHECK; L-3D-1/2/4).
+2. `AdapterRaycastHitsSolidCellWest` (6 CHECK; L-3D-1/2).
+3. `AdapterRaycastHitsSolidCellSouth` (6 CHECK; L-3D-1/2).
+4. `AdapterRaycastHitsSolidCellNorth` (6 CHECK; L-3D-1/2).
+5. `AdapterRaycastHitsDiagonal_NE` (5 CHECK; L-3D-1/2; tie-
+   break between x and y crossings intentionally NOT locked —
+   no L-3D-7 — test asserts hit-cell is among
+   `{(2,3), (3,2), (3,3)}`).
+6. `AdapterRaycastHitPointIsBoundaryNotCellCenter` (4 CHECK;
+   L-3D-2 — boundary x=64 vs cell-center x=80).
+7. `AdapterRaycastMissesWhenNoSolidInPath` (3 CHECK; L-3D-1
+   no-hit + grid exit).
+8. `AdapterRaycastRespectsMaxDistanceCutoff` (3 CHECK;
+   L-3D-6).
+9. `AdapterRaycastHonorsTMinSkipsLeadingCell` (4 CHECK;
+   L-3D-5; sanity sub-check re-runs with tMin=0 to confirm
+   hit).
+10. `AdapterRaycastDegenerateDirectionReturnsSentinel` (3
+    CHECK; L-3D-3).
+
+**Edge cases / traps documented** (would have been bugs):
+
+- `cellToWorld` returns cell CENTER per R-3E.5 (`AYTileMath.h:
+  18-19`). The walker derives EDGES by `center +/- 0.5 *
+  tileSize * sign`; this is the half-cell trap noted in
+  `AYTilemap.h:203-208`. The first iteration of the D3 test
+  matrix computed test origins as `cell.center + tileSize/2`
+  (which is the next cell's bottom-left corner, not the
+  current cell's center); the walker correctly reported
+  `hit.hit = false` on those tests. Test origins now use
+  exact `cellToWorld(c).{x,y}` arithmetic.
+- `worldToCell` floors toward −∞ (R-3E.2). The walker feeds
+  origin through `worldToCell` first then snaps if OOB;
+  the half-open `[cellOrigin + cell*size, cellOrigin +
+  (cell+1)*size)` interval discipline is preserved.
+
+**Open follow-ups**:
+
+- Resolver consumer (broadphase / character controller /
+  normal-based correction) — AYPhysics maintainer, §4.2.1.
+- `RaycastHit2D::normal` field — add when resolver needs it.
+- `raycast` with `layerMask` filter — §8.1 doc has it;
+  shipped signature doesn't; adding it is a separate slice.
+- Slope_L / Slope_R / OneWay / Hazard semantics stay out-of-
+  scope until the consumer wire (L-3D-1's `!= Empty` rule
+  treats them all as "stop the walk" today).
+- Lockstep / Sim-lane raycast (Present-lane only; §6.3 lock).
+- `cellOrigin` non-zero origin (Tilemap cellOrigin parameter;
+  ECS camera integration PR).
+- The 3 unlogged §8.1 doc-vs-code drifts logged above — a
+  separate hygiene commit can sync.
 
 ---
 
