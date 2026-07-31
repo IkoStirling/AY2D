@@ -55,6 +55,13 @@ void InMemoryTilemapChunkSource::eraseByKey(MapKey key) noexcept {
     _index.erase(it);
     _counters.chunk_resident_count.store(
         static_cast<uint32_t>(_cache.size()), std::memory_order_relaxed);
+    // KI-3I-1 fix (§13.24): bump `evictions_lru` on per-key erase so
+    // the per-key helper matches the bulk-path semantics
+    // (`evictIfNeeded` / `evictDownTo` both bump). The bulk paths use
+    // direct cache.erase() rather than going through this helper, so
+    // the bump is not double-counted. The bump is `1u`, not the count
+    // removed, because `eraseByKey` is per-key.
+    _counters.evictions_lru.fetch_add(1u, std::memory_order_relaxed);
 }
 
 bool InMemoryTilemapChunkSource::contains(MapKey key) const noexcept {

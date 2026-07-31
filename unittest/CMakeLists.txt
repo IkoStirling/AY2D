@@ -134,6 +134,12 @@ add_executable(${TEST_TARGET}
     # never modified. No new deps; uses live World2D +
     # World2DSnapshot::build for deltas.
     Test_World2DSnapshotDiff.cpp
+    # P3J.1 in-AY2D tests - KI-3I-1 fix: eraseByKey bumps
+    # evictions_lru so the per-key helper matches the bulk-path
+    # semantics. design.md §13.24 / §18.7. The bulk paths
+    # (evictIfNeeded / evictDownTo) use direct cache.erase()
+    # so the new bump is not double-counted.
+    Test_ChunkSourceEraseByKey.cpp
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

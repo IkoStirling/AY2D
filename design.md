@@ -3530,4 +3530,90 @@ it); deferred to Phase 3J.
 
 ---
 
+### 13.24 P3J.1 — KI-3I-1 fix: `eraseByKey` bumps `evictions_lru` (v0.1.22)
+
+**Type**: bug fix (test + src). Zero new surface; in-AY2D
+only.
+
+**Authoritative docs**:
+- §13.21 KI-3I-1 entry (deferred follow-up).
+- §18.7 "KI-3I-1 (`eraseByKey` counter asymmetry)" block.
+
+**The bug**: `InMemoryTilemapChunkSource::eraseByKey(MapKey)`
+deletes a single entry from the cache and updates
+`chunk_resident_count`, but does **not** bump
+`evictions_lru`. The counter is bumped in the bulk paths
+(`evictIfNeeded` ~line 128, `evictDownTo` ~line 313) but
+not in the per-key helper. This is observable: any caller
+that invokes `eraseByKey` directly (today there are none
+in the AY2D codebase, but the public surface is reachable
+from consumers) sees `evictions_lru` under-count.
+
+**The fix**: add
+`_counters.evictions_lru.fetch_add(1u, std::memory_order_relaxed)`
+to `eraseByKey` body. The bulk paths do **not** call
+`eraseByKey` themselves — `evictIfNeeded` and
+`evictDownTo` use direct `_cache.erase(_cache.begin()) +
+_index.erase(key)` (verified by grep: zero `.eraseByKey` /
+`->eraseByKey` call sites in the entire AY2D tree) — so
+the bump is not double-counted. `chunk_resident_count`
+update is preserved.
+
+**Files modified**:
+- `src/AYInMemoryTilemapChunkSource.cpp` — `eraseByKey`
+  body adds the counter bump + comment block referencing
+  this entry.
+- `unittest/Test_ChunkSourceEraseByKey.cpp` (NEW) — 3
+  cases / ~10 CHECK.
+
+**NOT touched**: header `AYInMemoryTilemapChunkSource.h`
+(public surface unchanged), `Tilemap` / `World2D` /
+`ITilemapChunkSource` (no impact), bgfx-leak guard (pure
+counter change), root `CMakeLists.txt` / `.gitmodules`.
+
+**Test cases** (`Test_ChunkSourceEraseByKey`, suite
+`ChunkSourceEraseByKey`, 3 cases):
+
+1. `EraseByKey_BumpsEvictionsLruByOne` (3 CHECK) —
+   cap=10, put (0,0)/(1,0)/(2,0), resident=3,
+   evictions_lru=0. `eraseByKey(packKey(1,0))` →
+   resident==2, evictions_lru==1, contains(packKey(1,0))
+   == false. Locks the fix.
+2. `EraseByKey_NoMatch_DoesNotBump` (2 CHECK) — empty
+   cache; `eraseByKey(packKey(99,99))` → resident==0,
+   evictions_lru==0. Locks the no-op-on-miss path.
+3. `EraseByKey_DoesNotInterfereWithBulkEvictionCounter`
+   (3 CHECK) — cap=2, put (0,0)/(1,0)/(2,0) (third put
+   triggers `evictIfNeeded` → evictions_lru==1), then
+   `eraseByKey(packKey(1,0))` → evictions_lru==2,
+   resident==1 (only (2,0) remains, the LRU survivor
+   since (0,0) was already evicted by capacity pressure).
+   Locks the bulk-path / per-key-path counter sum.
+
+**Invariants** (re-stated for grep-ability):
+
+- `eraseByKey` bumps `evictions_lru` exactly once per
+  successful erase (the bump is `1u`, not the number
+  removed, since `eraseByKey` is per-key).
+- `eraseByKey` bumps `evictions_lru` zero times on a
+  no-match (the early-return branch never touches
+  counters).
+- The bulk paths (`evictIfNeeded`, `evictDownTo`) and
+  the per-key path (`eraseByKey`) are now symmetric in
+  counter discipline.
+- L-3I-3 ("evictions_lru exactly once per LRU eviction")
+  strengthens from "every bulk-path call site" to "every
+  per-call-site".
+
+**Open follow-ups** (after P3J.1):
+
+- KI-3I-1 is now **closed**. The §13.21 / §18.7 "deferred
+  to Phase 3J" trailers are updated below in C14.
+- Phase 3J continues with A-3 / A-10 / A-1 / A-12 /
+  A-7 / A-11 / A-8 / A-6 / 3J env PR per §13.23 list.
+- Cross-module PRs (CM-1..CM-5) still deferred per
+  §4.2.1.
+
+---
+
 ### 13.X Future versions (template)
