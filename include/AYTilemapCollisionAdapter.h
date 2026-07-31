@@ -35,9 +35,37 @@ public:
     // §8.1 default impl: `flagsAt(c) != CollisionFlags::Empty`.
     // Inherited from `ITileCollisionQuery`; not overridden here.
 
-    // §11 Phase 5 row placeholder: always miss (`hit=false`).
-    // A real axis-aligned tile-grid walker is the cross-module
-    // PR's responsibility (§4.2.1).
+    // §8.1 + §13.35: 2D Amanatides-Woo DDA walker (in-AY2D,
+    // geometry-only, no resolver per §8.2). Walks the tile grid
+    // from `worldToCell(ray.origin)` toward `ray.direction`,
+    // advancing one cell per dominant-axis boundary crossing.
+    // The first cell where `flagsAtRaw(c) != CollisionFlags::Empty`
+    // (L-3D-1 — matches default `isBlocked` per §13.PF C6-R1)
+    // terminates the walk and fills `RaycastHit2D`.
+    //
+    // t semantics (L-3D-2): the returned `hit.t` is along the
+    // ORIGINAL `ray.direction` (pre-normalization), so
+    // `pointAt(t) == origin + t * direction` always holds
+    // (matches §8.1 Ray2D doc). The walker normalizes
+    // internally for DDA bookkeeping.
+    //
+    // tMin semantics (L-3D-5): cells whose entry-t < `ray.tMin`
+    // are skipped without flag test (the origin cell is always
+    // tested; if it is solid, the reported `t` is `tMin`).
+    //
+    // maxDistance: hard cutoff (L-3D-6). A hit whose entry t
+    // exceeds `maxDistance` is reported as no-hit; `t ==
+    // maxDistance` is inclusive.
+    //
+    // Degenerate `ray.direction == (0, 0)`: returns the no-hit
+    // sentinel (L-3D-3).
+    //
+    // Origin OOB: snaps to the nearest in-grid cell before
+    // stepping (L-3D-4).
+    //
+    // Pure CPU geometry. No allocation. No bgfx. No cross-module
+    // PR for this slice (D3 in-AY2D; the resolver consumer
+    // remains §4.2.1).
     [[nodiscard]] RaycastHit2D raycast(Ray2D ray, float maxDistance) const noexcept override;
 
     // Re-target the adapter at a different tilemap. The previous
