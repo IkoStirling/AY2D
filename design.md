@@ -4541,4 +4541,84 @@ CHECK):
 
 ---
 
+### 13.36 Phase 3K ship trailer + cross-module PR roadmap (2026-07-31)
+
+**Phase 3K ship trailer summary**:
+
+- D3 (§13.35) + C3 (§13.34) both ship. v0.1.31, 34 TEST_SUITE
+  / 1414 CHECK PASS, bgfx-leak guard green, 3× consecutive
+  green runs locked incl. cold-configure. 12 commits since
+  P3J trailer (`2b30482`, `677818e`, `6ad85dc`, `18b7e15`,
+  `3308fbe` + 7 × D3 iterations).
+- **No in-AY2D residue remaining.** Phase 3L = no listed
+  candidate; the only outstanding AY2D-side work is "the 3
+  unlogged §8.1 doc-vs-code drifts" (single hygiene commit)
+  and `RaycastHit2D::normal` field (add when resolver needs
+  it).
+
+**Cross-module PR roadmap (CM-1..CM-5 + new CM-6)**:
+
+Per `§4.2.1` and §13.20's `blockedTileIds` precedent
+(data-side wire in-AY2D; consumer-side cross-module), the
+remaining AY2D integration work is **all cross-module**:
+
+| CM | Target module | Owner | AY2D PR author role | Status |
+|---|---|---|---|---|
+| **CM-1** | AYRenderer | AYRenderer maintainer | Submit cross-module PR, do not self-merge | deferred; needs `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload` append |
+| **CM-2** | AYResource | AYResource maintainer | Submit cross-module PR, do not self-merge | deferred; needs `IAYTilemap.h` + `.aytilemap` binary Loader/Converter + populate `blockedTileIds` |
+| **CM-3** | AYEntity | AYEntity maintainer | Submit cross-module PR, do not self-merge | deferred; needs `AYTileMapComponent` / `AYSpriteComponent` ECS + `register2DSystem<T>(priority)` helper |
+| **CM-4** | AYShader | AYShader maintainer | Submit cross-module PR, do not self-merge | deferred; needs `tilemap.phoskia` + `tilemap_9tap.phoskia` variant tags |
+| **CM-5** | AYPhysics | AYPhysics maintainer | Submit cross-module PR, do not self-merge | **next up** — needs `ITileCollisionQuery` consumer (broadphase / character controller / normal-based correction) on the AYPhysics 2D resolver chain (Box2D backend per `AYPhysics/design.md` R2.5 ship, Jolt-2D "unverified" per §8.3) |
+| **CM-6** (new) | AYEditor | AYEditor maintainer | Submit cross-module PR, do not self-merge | deferred; needs 2D viewport glue (orthographic camera → Editor viewport). Lives in `AYEditor`, NOT `AY2D` per R-9 lock. |
+
+**CM-5 (AYPhysics) shape — known at v0.1.31**:
+
+- AY2D side already ships the **query** surface (§13.13 +
+  §13.35 + L-3D-1..6). The consumer side needs:
+  1. A new file `src/AYPhysics2D/TileCollisionQueryConsumer2D.cpp`
+     (or equivalent) that takes a `ITileCollisionQuery*` and a
+     `b2Body*` (or `BodyHandle2D`), and on each step:
+     - Raycasts the body's intended velocity against the tile
+       query (Amanatides-Woo output → `t`, `cell`, `flags`).
+     - On hit, clamps position / velocity to the entry point
+       and emits a collision event.
+  2. Hook into `Box2DBackend2D` contact pipeline (or
+     pre-step filter) so that tile-vs-body is queried each
+     step. The exact hook point depends on AYPhysics
+     `R2.5/Box2DBackend2D` design — to be filled in by the
+     AYPhysics maintainer.
+  3. New types in AYPhysics side: probably
+     `TileCollisionBody2D { ITileCollisionQuery*, b2Body* }`
+     + a `CollisionFlags → friction/restitution` mapping.
+  4. Test fixture: extend `Bench_PhysicsStep` with a 2D
+     ground-tilemap + a falling 2D body scenario; assert
+     settle position equals the expected cell-top y.
+- AY2D side additions for CM-5 (minimal):
+  1. `RaycastHit2D::normal` field (add when resolver needs
+     it; ship-locked today per §13.35).
+  2. Optional: `raycast` overload with `CollisionFlags
+     layerMask` parameter (mirrors §8.1 doc; D3 ship kept
+     2-param form per L-3D-1 `!= Empty` rule; the
+     `layerMask` is the consumer's job).
+- AY2D's role in CM-5 PR (per §4.2.1): **submit the PR
+  description + test fixtures + 2D ground-tilemap loader
+  expectations; do NOT self-merge into AYPhysics' branch**.
+  The AYPhysics maintainer merges after review.
+
+**Cross-module PR hygiene** (carry-over from P3I/J trailers):
+
+- AY2D submodule's own CI is forbidden from merging into
+  other modules' branches (§4.2.1 enforcement sentence).
+- Each cross-module PR is a **two-commit chain**:
+  submodule feat/docs + root gitlink bump; the AY-target
+  submodule commit lives in that submodule's own PR
+  (AYPhysics / AYRenderer / etc.) and merges through that
+  maintainer's CI.
+- New locks introduced by a cross-module PR belong to the
+  **target** module's design.md; AY2D references them but
+  does not redefine (avoids lock-name collisions across
+  submodules).
+
+---
+
 ### 13.X Future versions (template)
