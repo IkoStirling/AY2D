@@ -63,6 +63,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <sys/stat.h>
 #include <vector>
@@ -76,7 +77,6 @@ namespace {
 // ---- World constants ------------------------------------------------------
 constexpr int    kWindowWidth   = 1280;
 constexpr int    kWindowHeight  = 720;
-constexpr int    kMaxFrames     = 120;
 constexpr int    kShotFrames[]  = {30, 60};
 constexpr int    kShotCount     = 2;
 
@@ -235,6 +235,7 @@ struct DemoState {
     ayt::game::GameLoop* loop = nullptr;
     bool                   running = true;
     int                    frame = 0;
+    int                    frameCap = 0;  // 0 = run until Esc / window close
     DemoPath               path = DemoPath::Ecs;
     bool                   key1Down = false;  // edge-detect latches
     bool                   key2Down = false;
@@ -759,8 +760,9 @@ int main()
     std::fprintf(stderr, "[AY2DDemo] shaderc hint: %s (exists=%d)\n",
                  AY_SHADER_SHADERC_HINT,
                  fileExists(AY_SHADER_SHADERC_HINT) ? 1 : 0);
-    std::fprintf(stderr, "[AY2DDemo] Esc quit | 1 = ECS | 2 = direct AY2D | "
-                         "screenshots at frames 30/60\n");
+    std::fprintf(stderr, "[AY2DDemo] Esc quit (no auto-exit) | 1 = ECS | "
+                         "2 = direct AY2D | screenshots at frames 30/60 | "
+                         "AY2D_DEMO_FRAMES=n restores auto-exit\n");
 
     loop.setTargetFPS(60.0f);
     loop.setRenderThreadEnabled(false);
@@ -789,6 +791,14 @@ int main()
         switchPath(state, DemoPath::Direct2D);
     } else {
         spawnEcsScene(state);
+    }
+
+    // AY2D_DEMO_FRAMES=<n> restores the old auto-exit cap for
+    // headless acceptance runs; default 0 = run until Esc / close.
+    char envFrames[16] = {};
+    if (GetEnvironmentVariableA("AY2D_DEMO_FRAMES", envFrames,
+                                static_cast<DWORD>(sizeof(envFrames))) > 0) {
+        state.frameCap = std::atoi(envFrames);
     }
 
     const auto startTime = std::chrono::steady_clock::now();
@@ -872,10 +882,10 @@ int main()
             }
         }
 
-        // Force-stop after kMaxFrames frames.
-        if (state.frame >= kMaxFrames) {
+        // Headless acceptance cap (AY2D_DEMO_FRAMES); 0 = unlimited.
+        if (state.frameCap > 0 && state.frame >= state.frameCap) {
             std::fprintf(stderr, "[AY2DDemo] reached %d frames; stopping loop\n",
-                         kMaxFrames);
+                         state.frameCap);
             state.running = false;
             loop.stop();
             return;
