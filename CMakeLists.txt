@@ -178,4 +178,15 @@ else()
         "skipping enable_testing/add_subdirectory for Phase 0.")
 endif()
 
+# ----------------------------------------------------------------------------
+# CM-4 (2026-08-11): standalone 2D demo exe (刀 4). Gated on the
+# directory existing so a subtree without demo/ stays buildable —
+# mirrors the unittest gate above. The demo links AY2D + AYRenderer +
+# AYEntity + AYResource + AYGameLoop and is the ONLY consumer allowed
+# to hold AY2D scene data and translate it into AYRenderer DrawItems.
+# ----------------------------------------------------------------------------
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/demo/CMakeLists.txt")
+    add_subdirectory(demo)
+endif()
+
 message(STATUS "AY2D v0.1.31 (D3 raycast walker, Phase 3K ship) — see ${CMAKE_CURRENT_SOURCE_DIR}/design.md")
