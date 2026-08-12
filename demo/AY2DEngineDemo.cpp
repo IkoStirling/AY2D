@@ -29,6 +29,7 @@
 #  define NOMINMAX
 #endif
 #include <Windows.h>
+#include <windowsx.h>  // GET_X_LPARAM / GET_Y_LPARAM
 
 #include "AYEntity.h"
 #include "AYEntityModule.h"
@@ -60,6 +61,7 @@
 #include <aymath/MathTransform.h>
 #include <aymath/MathTypes.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -90,6 +92,8 @@ constexpr uint32_t kAtlasTexels         = kTilePx * kAtlasTilesPerRow;  // 64
 constexpr float kMapCenterX = kMapCols * kTilePx * 0.5f;   // 160
 constexpr float kMapCenterY = kMapRows * kTilePx * 0.5f;   // 120
 constexpr float kCameraZoom = 2.0f;
+constexpr float kMinZoom     = 0.5f;   // wheel-zoom clamp
+constexpr float kMaxZoom     = 8.0f;
 constexpr float kViewSize   = 540.0f;  // vertical world extent at zoom 1
 
 constexpr int kSpriteCount = 12;
@@ -239,6 +243,13 @@ struct DemoState {
     DemoPath               path = DemoPath::Ecs;
     bool                   key1Down = false;  // edge-detect latches
     bool                   key2Down = false;
+
+    // Interactive camera (wheel zoom + left-drag pan).
+    float                  zoom = kCameraZoom;  // clamped [kMinZoom, kMaxZoom]
+    bool                   autoPan = true;      // orbit until first drag
+    bool                   dragging = false;    // left button down
+    POINT                  dragLastCursor{};
+    float                  dragCamX = 0.0f, dragCamY = 0.0f;  // drag-maintained cam pos
 
     std::string assetDir;
     std::string tilemapPath;
@@ -654,6 +665,55 @@ LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
+    case WM_MOUSEWHEEL: {
+        // Wheel = zoom about the screen center. 120 units per notch.
+        if (state != nullptr) {
+            const short delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            const float factor = std::pow(1.1f, static_cast<float>(delta) / 120.0f);
+            state->zoom = std::clamp(state->zoom * factor, kMinZoom, kMaxZoom);
+        }
+        return 0;
+    }
+    case WM_LBUTTONDOWN: {
+        // Left-drag = manual pan; snap the drag baseline to the live
+        // camera so there is no jump on press.
+        if (state != nullptr) {
+            state->dragging = true;
+            state->autoPan = false;  // first drag takes over the orbit
+            state->dragLastCursor.x = GET_X_LPARAM(lParam);
+            state->dragLastCursor.y = GET_Y_LPARAM(lParam);
+            if (state->path == DemoPath::Ecs && state->ecsCameraComp != nullptr) {
+                state->dragCamX = state->ecsCameraComp->positionX;
+                state->dragCamY = state->ecsCameraComp->positionY;
+            } else {
+                state->dragCamX = state->direct.camera.positionX;
+                state->dragCamY = state->direct.camera.positionY;
+            }
+            SetCapture(hwnd);
+        }
+        return 0;
+    }
+    case WM_MOUSEMOVE: {
+        // Incremental drag: worldDelta = pixelDelta * (viewHeight/zoom / winHeight).
+        if (state != nullptr && state->dragging) {
+            POINT cur{};
+            cur.x = GET_X_LPARAM(lParam);
+            cur.y = GET_Y_LPARAM(lParam);
+            const float pxToWorld = kViewSize / static_cast<float>(kWindowHeight) / state->zoom;
+            // +y world is up: dragging right moves content right => cam left;
+            // dragging down moves content down => cam up (+y).
+            state->dragCamX -= static_cast<float>(cur.x - state->dragLastCursor.x) * pxToWorld;
+            state->dragCamY += static_cast<float>(cur.y - state->dragLastCursor.y) * pxToWorld;
+            state->dragLastCursor = cur;
+        }
+        return 0;
+    }
+    case WM_LBUTTONUP:
+        if (state != nullptr) {
+            state->dragging = false;
+        }
+        ReleaseCapture();
+        return 0;
     default:
         break;
     }
@@ -717,6 +777,8 @@ void switchPath(DemoState& state, DemoPath next)
     if (state.path == next) {
         return;
     }
+    state.autoPan = true;    // path switch restarts the camera orbit
+    state.dragging = false;
     if (next == DemoPath::Ecs) {
         resetDirect2DPath(state);
         spawnEcsScene(state);
@@ -760,9 +822,9 @@ int main()
     std::fprintf(stderr, "[AY2DDemo] shaderc hint: %s (exists=%d)\n",
                  AY_SHADER_SHADERC_HINT,
                  fileExists(AY_SHADER_SHADERC_HINT) ? 1 : 0);
-    std::fprintf(stderr, "[AY2DDemo] Esc quit (no auto-exit) | 1 = ECS | "
-                         "2 = direct AY2D | screenshots at frames 30/60 | "
-                         "AY2D_DEMO_FRAMES=n restores auto-exit\n");
+    std::fprintf(stderr, "[AY2DDemo] Esc quit | 1/2 switch path | "
+                         "wheel zoom | left-drag pan (disables orbit) | "
+                         "shots at 30/60 | AY2D_DEMO_FRAMES=n auto-exit\n");
 
     loop.setTargetFPS(60.0f);
     loop.setRenderThreadEnabled(false);
@@ -822,16 +884,32 @@ int main()
         state.key1Down = k1;
         state.key2Down = k2;
 
-        // Shared camera pan (applies to whichever line is live).
+        // Interactive camera: wheel zoom + left-drag pan. A drag takes
+        // over the position for that frame; autoPan turns off permanently
+        // on the first drag so the manual framing sticks after release.
         const auto now      = std::chrono::steady_clock::now();
         const float elapsed = std::chrono::duration<float>(now - startTime).count();
         float camX = 0.0f, camY = 0.0f;
-        updateCameraPan(elapsed, camX, camY);
+        if (state.dragging && (GetAsyncKeyState(VK_LBUTTON) & 0x8000)) {
+            camX = state.dragCamX;  // manual pan this frame
+            camY = state.dragCamY;
+        } else {
+            if (state.dragging) {
+                state.dragging = false;  // button lost (e.g. path switch)
+            }
+            if (state.autoPan) {
+                updateCameraPan(elapsed, camX, camY);
+            } else {
+                camX = state.dragCamX;  // manual mode: freeze at last drag pos
+                camY = state.dragCamY;
+            }
+        }
 
         if (state.path == DemoPath::Ecs) {
             if (state.ecsCameraComp != nullptr) {
                 state.ecsCameraComp->positionX = camX;
                 state.ecsCameraComp->positionY = camY;
+                state.ecsCameraComp->zoom      = state.zoom;
             }
             // Gentle sprite animation on the ECS line.
             for (size_t i = 0; i < state.ecsEntities.size(); ++i) {
@@ -848,6 +926,7 @@ int main()
         } else {
             state.direct.camera.positionX = camX;
             state.direct.camera.positionY = camY;
+            state.direct.camera.zoom      = state.zoom;
             // Direct-line sprite animation (rebuild affine matrices).
             for (int i = 0; i < kSpriteCount; ++i) {
                 float rot = 0.0f;
