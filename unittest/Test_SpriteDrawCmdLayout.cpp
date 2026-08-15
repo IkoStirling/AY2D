@@ -15,7 +15,7 @@
 
 #include "AYTest.h"
 
-#include "aymath/MathTypes.h"
+#include "AYMath/MathTypes.h"
 
 using namespace ayt::ay2d;
 

@@ -96,7 +96,7 @@ TEST_SUITE(TileMathSuite)
             ayt::math::FVector2{0.0f, 0.0f},
             16.0f, 16.0f);
         // FVector2 exposes .x / .y (no operator[] in the public
-        // surface — see aymath/MathTypes.h:13). CHECK_FLOAT_EQ
+        // surface — see AYMath/MathTypes.h:13). CHECK_FLOAT_EQ
         // uses a 1e-5 epsilon to absorb the exact-FP add of the
         // +0.5 cell-center offset.
         CHECK_FLOAT_EQ(c.x, 40.0f, 1e-5f);

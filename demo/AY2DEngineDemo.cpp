@@ -57,9 +57,9 @@
 #include "assetsImpl/AYTilemapAsset.h"
 #include "assetsImpl/AYTexture.h"
 
-#include "ayio/File.h"
-#include <aymath/MathTransform.h>
-#include <aymath/MathTypes.h>
+#include "AYIO/File.h"
+#include <AYMath/MathTransform.h>
+#include <AYMath/MathTypes.h>
 
 #include <algorithm>
 #include <chrono>
@@ -313,7 +313,7 @@ bool bakeTilemap(const std::string& path)
 {
     ayt::resource::TilemapAsset asset;
     // UInt16 = ayt::math::UInt16 via the global using alias
-    // (aymath/MathDefs.h:64-65) — the same alias AYResource's own
+    // (AYMath/MathDefs.h:64-65) — the same alias AYResource's own
     // TilemapAsset.h uses internally.
     asset.create(kMapCols, kMapRows,
                  static_cast<UInt16>(kTilePx),

@@ -91,7 +91,7 @@ target_include_directories(${MODULE_NAME} PUBLIC
 # The PUBLIC keyword on `AYMath` is what carries both:
 #   * the link-time symbol reference (so future consumers can use
 #     `Float3x3` / `FVector2` through the AY2D umbrella), AND
-#   * the AYMath PUBLIC include path (`aymath/MathTypes.h`) so that
+#   * the AYMath PUBLIC include path (`AYMath/MathTypes.h`) so that
 #     AY2D's own .cpp files can include the math header.
 #
 # P3G.1 partial (slice 4): also PUBLIC-link `AYLog` so the

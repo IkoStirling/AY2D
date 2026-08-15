@@ -43,7 +43,7 @@ namespace {
 [[nodiscard]] ayt::math::FRectangle spriteAabbOf(
     const Sprite& s) noexcept {
     // Float3x3 has 9 floats stored row-major (verified at
-    // aymath/MathTypes.h:551; Phase 3A踩坑 #15 — use m[i],
+    // AYMath/MathTypes.h:551; Phase 3A踩坑 #15 — use m[i],
     // not row[i].x like Float4x4).
     const float cx = s.worldMatrix.m[6];
     const float cy = s.worldMatrix.m[7];

@@ -21,7 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "aymath/MathTypes.h"
+#include "AYMath/MathTypes.h"
 
 #include "AY2DCounters.h"
 #include "AYAtlasDesc.h"

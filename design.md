@@ -222,7 +222,7 @@ When AY2D later needs to modify a file owned by another module (e.g. Phase 2 mus
 
 - Atlas is a single texture (`.ayatlas`, see §9); tile size is **constant** per atlas (e.g. `32×32`); sub-rect uses **integer** `texelIndex` not floats.
 - Atlas size in texels: `(atlasWidthTexels, atlasHeightTexels)` stored as `uint32_t`. Atlas size in bytes derived from `TextureFormat`.
-- World coordinate frame is `IVector2` cells (per [AYMath/aymath/MathTypes.h](../../AYFoundation/AYMath/include/aymath/MathTypes.h)); this is integer-grid, **not** fixed-point. Sim lane can use it without determinism concerns.
+- World coordinate frame is `IVector2` cells (per [AYMath/AYMath/MathTypes.h](../../AYFoundation/AYMath/include/AYMath/MathTypes.h)); this is integer-grid, **not** fixed-point. Sim lane can use it without determinism concerns.
 - **Pixel-center convention (L-7)**: the texel center is at the integer coordinate. A tile at `(0, 0)` in tile space samples atlas `[0.5, tileSize - 0.5]` in texel units (or, equivalently, `[tileSize/(2*atlasW), tileSize/(2*atlasW) ± ...]` in UV space). This is the standard "half-texel offset" rule and is **only** relevant for nearest filtering at exact integer world positions to avoid edge bleed into the neighboring tile.
 - The half-texel offset does **not** by itself change the number of texture fetches. It only changes the sample position.
 - **Half-texel offset does not** make a 3×3 sampling equal to a 2×2 sampling. See §5.4.
@@ -1092,7 +1092,7 @@ When this file is updated, append a new section here:
   cross-module PR in Phase 3+.
 - §3 + §7.3: `Sprite` placeholder is promoted to a real struct.
   Fields: `worldMatrix` (`Float3x3` affine — 2D scene, no perspective
-  column; verified to ship in `AYMath/aymath/MathTypes.h:609` with
+  column; verified to ship in `AYMath/AYMath/MathTypes.h:609` with
   `identity()` factory), `sourceRect` (4 UV floats), `color` (4 RGBA
   floats, default opaque white), `flip` (`SpriteFlip` enum, 2-bit
   composed), `layer` (uint8_t, 0..31), `sortingKey` (uint32_t,
@@ -1125,7 +1125,7 @@ When this file is updated, append a new section here:
   no AYAnimation include, no AYAnimation link.
 - §11.2: bgfx-leak guard `ay2d_check_no_bgfx_in_public_headers` stays
   green (12 headers scanned, 0 leaks). New headers include only
-  `<cstdint>`, `<vector>`, `aymath/MathTypes.h`.
+  `<cstdint>`, `<vector>`, `AYMath/MathTypes.h`.
 - §13.7: This changelog entry.
 
 **Open follow-ups**:
@@ -1449,7 +1449,7 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
   Symbols are free functions / free helpers, never member methods
   on `Tilemap` (so `TileCoord` / `TileRect` stay context-free).
   The header includes only `AYTileCoord.h`, `AYTileRect.h`, and
-  `aymath/MathTypes.h` (already-public AYMath — Phase 3A PUBLIC
+  `AYMath/MathTypes.h` (already-public AYMath — Phase 3A PUBLIC
   link). No new module dependency. No bgfx.
   - `worldToCell(ayt::math::FVector2 world, ayt::math::FVector2 cellOrigin, float cellSizeW, float cellSizeH) noexcept -> TileCoord`
   - `cellToWorld(TileCoord, ...) -> ayt::math::FVector2` (cell
@@ -1487,7 +1487,7 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
   world coord + OOB read, `setTileRange` via world rect + partial
   clamp.
 - §10.2: bgfx-leak guard stays green. New headers include only
-  `<cstdint>`, `aymath/MathTypes.h` (PUBLIC link), and the
+  `<cstdint>`, `AYMath/MathTypes.h` (PUBLIC link), and the
   existing in-AY2D `AYTileCoord.h` + `AYTileRect.h`. No `bgfx::*`,
   no `bx::*`, no third-party module.
 - §13.10: This changelog entry. Front-matter bumped to v0.1.8.
@@ -1689,7 +1689,7 @@ The free-function overload of `setTileRange` in
   is also a write no-op at the `setTile` boundary), so this
   is a defensive guard, not a hot path.
 - **R-3E.7** bgfx-leak guard stays green. `AYTileMath.h`
-  includes only `<cstdint>`, `aymath/MathTypes.h`, the
+  includes only `<cstdint>`, `AYMath/MathTypes.h`, the
   in-AY2D `AYTileCoord.h` + `AYTileRect.h` — confirmed by
   build-time `ay2d_check_no_bgfx_in_public_headers` target.
 - **R-3E.8** deterministic across machines: all four helpers
@@ -1740,7 +1740,7 @@ no cross-module PRs)
   `include/AYWorldAabb.h` as a thin wrapper around the existing
   `viewMatrix()` + `projectionMatrix()` math (no AYMath
   surface-area extension; `ayt::math::FRectangle` already
-  ships in `aymath/MathTypes.h:1092`). When `viewSize <= 0` or
+  ships in `AYMath/MathTypes.h:1092`). When `viewSize <= 0` or
   `viewport.heightPx <= 0`, the camera AABB is empty — every
   sprite is culled (R-3F.2).
 - §17.3: `buildSpriteScene(sprites, camera, out)` free function
@@ -1784,7 +1784,7 @@ no cross-module PRs)
   silently diverge. Every cull path asserts both the
   `out.size()` AND the `out[i].packedSortKey` sequence.
 - §11.2: bgfx-leak guard stays green. `AYSpriteDrawCmd.h` and
-  `AYWorldAabb.h` include only `<cstdint>`, `aymath/MathTypes.h`
+  `AYWorldAabb.h` include only `<cstdint>`, `AYMath/MathTypes.h`
   (PUBLIC), and in-AY2D `AYSprite.h` + `AYOrthographicCamera.h`.
   No `<bgfx/*.h>`, no `<bx/*.h>`. Confirmed by build-time
   `ay2d_check_no_bgfx_in_public_headers` target.
@@ -1877,7 +1877,7 @@ no cross-module PRs)
 // include/AYSpriteDrawCmd.h — Phase 3F
 #pragma once
 #include <cstdint>
-#include "aymath/MathTypes.h"
+#include "AYMath/MathTypes.h"
 #include "AYSprite.h"  // For SpriteFlip; render-side can read the
                        //   enum value through the `flip` field on
                        //   this struct without re-including the
@@ -1919,7 +1919,7 @@ case).
 // include/AYWorldAabb.h — Phase 3F
 #pragma once
 #include <cstdint>
-#include "aymath/MathTypes.h"  // FVector2 + FRectangle
+#include "AYMath/MathTypes.h"  // FVector2 + FRectangle
 #include "AYOrthographicCamera.h"
 namespace ayt::ay2d {
 
@@ -2278,7 +2278,7 @@ budget) untouched.
   (`Ray2D` / `RaycastHit2D` / `ITileCollisionQuery` /
   `TilemapCollisionQueryAdapter`) are exposed through
   `AYTileCollision.h` + `AYTilemapCollisionAdapter.h`. Both
-  headers include only `<cstdint>` + `aymath/MathTypes.h` +
+  headers include only `<cstdint>` + `AYMath/MathTypes.h` +
   `AYTileCoord.h` — zero bgfx paths.
 - §13.13: This changelog entry. Front-matter bumped to v0.1.11.
   Total tests: **18 TEST_SUITE / 538 CHECK assertions PASS** (was
@@ -2622,7 +2622,7 @@ All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
 + Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2) untouched.
 
 - §11.2: bgfx-leak guard stays green. `AYSpriteSheet.h`
-  includes `<cstdint>` + `<string>` + `aymath/MathTypes.h` +
+  includes `<cstdint>` + `<string>` + `AYMath/MathTypes.h` +
   `AYAtlasDesc.h` + `AYTileSamplerUV.h` — all bgfx-clean.
 - §13.18: This changelog entry. Front-matter bumped to v0.1.16.
   Total tests: **23 TEST_SUITE / 841 CHECK assertions PASS** (was

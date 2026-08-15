@@ -19,7 +19,7 @@
 
 #include <cstdint>
 
-#include "aymath/MathTypes.h"  // FRectangle + FVector2
+#include "AYMath/MathTypes.h"  // FRectangle + FVector2
 
 #include "AYOrthographicCamera.h"
 

@@ -26,7 +26,7 @@ TEST_SUITE(SpriteCullingSuite)
     // Build a helper that places a single sprite with a
     // consistent identity matrix + white color, at the
     // requested world translation (filled into `m[6]` / `m[7]`
-    // — see Phase 3A踩坑 #15 / aymath/MathTypes.h:551). Layer /
+    // — see Phase 3A踩坑 #15 / AYMath/MathTypes.h:551). Layer /
     // sortingKey are explicit so the test controls `packedSortKey`.
     Sprite makeSprite(float tx, float ty,
                       uint8_t layer, uint32_t sortingKey) {

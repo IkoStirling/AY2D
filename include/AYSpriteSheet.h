@@ -28,7 +28,7 @@
 #include <cstdint>
 #include <string>
 
-#include "aymath/MathTypes.h"
+#include "AYMath/MathTypes.h"
 
 #include "AYAtlasDesc.h"
 #include "AYTileSamplerUV.h"

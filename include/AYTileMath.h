@@ -21,7 +21,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "aymath/MathTypes.h"
+#include "AYMath/MathTypes.h"
 
 #include "AYTileCoord.h"
 #include "AYTileRect.h"

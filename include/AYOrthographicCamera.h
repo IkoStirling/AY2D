@@ -27,8 +27,8 @@
 #include <cmath>
 #include <cstdint>
 
-#include "aymath/MathTypes.h"
-#include "aymath/MathUtils.h"
+#include "AYMath/MathTypes.h"
+#include "AYMath/MathUtils.h"
 
 namespace ayt::ay2d {
 
