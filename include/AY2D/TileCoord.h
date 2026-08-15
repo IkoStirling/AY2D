@@ -1,5 +1,5 @@
 #pragma once
-// AYTileCoord.h — 2D integer grid coordinates + storage-width enum
+// AY2D/TileCoord.h — 2D integer grid coordinates + storage-width enum
 // (Phase 2, header-only).
 //
 // design.md §3 + §6: World coordinates are integer grid vectors (no

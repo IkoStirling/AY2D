@@ -5,7 +5,7 @@
 // helper, or a windowed average for per-frame counters) do not
 // require header churn.
 
-#include "AYWorld2DSnapshot.h"
+#include "AY2D/World2DSnapshot.h"
 
 #include <algorithm>
 #include <utility>

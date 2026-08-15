@@ -1,5 +1,5 @@
 #pragma once
-// AYTileCollision.h — Phase 5 ship: collision types + interface + adapters.
+// AY2D/TileCollision.h — Phase 5 ship: collision types + interface + adapters.
 //
 // design.md §8.1: this header is the public Phase 5 surface for
 // tile collision queries. It expands the Phase 0 placeholder
@@ -15,7 +15,7 @@
 //     `flagsAt` / `isBlocked` / `raycast`.
 //
 // Concrete adapters (e.g. `TilemapCollisionQueryAdapter` in
-// `AYTilemapCollisionAdapter.h`) implement the interface by
+// `AY2D/TilemapCollisionAdapter.h`) implement the interface by
 // delegating to a `Tilemap` cell. Production 2D physics
 // integration is deferred per §8.2 — AY2D ships **no** collision
 // resolver (only the interface + a thin adapter that surfaces
@@ -37,7 +37,7 @@
 
 #include "AYMath/MathTypes.h"
 
-#include "AYTileCoord.h"
+#include "AY2D/TileCoord.h"
 
 namespace ayt::ay2d {
 

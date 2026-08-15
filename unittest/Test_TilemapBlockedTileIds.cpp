@@ -17,8 +17,8 @@
 // TilemapCollisionQueryAdapter override `isBlocked`). The R3 cases
 // (7-9) cover non-Solid flags: OneWay, Slope_L|Solid, Hazard.
 
-#include "AYTilemap.h"
-#include "AYTilemapCollisionAdapter.h"
+#include "AY2D/Tilemap.h"
+#include "AY2D/TilemapCollisionAdapter.h"
 
 #include "AYTest.h"
 

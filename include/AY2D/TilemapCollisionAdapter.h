@@ -1,5 +1,5 @@
 #pragma once
-// AYTilemapCollisionAdapter.h — Phase 5 concrete adapter.
+// AY2D/TilemapCollisionAdapter.h — Phase 5 concrete adapter.
 //
 // design.md §8.1 + §11 Phase 5 row: the in-AY2D `TilemapCollisionQueryAdapter`
 // is the only concrete implementation of `ITileCollisionQuery` AY2D ships.
@@ -12,8 +12,8 @@
 // (e.g. an ECS system or test) MUST guarantee the tilemap outlives the
 // adapter. The adapter is non-owning; `release()` does nothing.
 
-#include "AYTileCollision.h"
-#include "AYTilemap.h"
+#include "AY2D/TileCollision.h"
+#include "AY2D/Tilemap.h"
 
 namespace ayt::ay2d {
 

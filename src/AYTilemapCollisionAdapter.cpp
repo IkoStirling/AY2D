@@ -14,10 +14,10 @@
 // character controller, normal-based correction) lands via
 // the cross-module PR to AYPhysics (§4.2.1).
 
-#include "AYTilemapCollisionAdapter.h"
+#include "AY2D/TilemapCollisionAdapter.h"
 
-#include "AYTileCollision.h"
-#include "AYTileMath.h"
+#include "AY2D/TileCollision.h"
+#include "AY2D/TileMath.h"
 
 #include <cmath>
 #include <limits>
@@ -76,9 +76,9 @@ RaycastHit2D TilemapCollisionQueryAdapter::raycast(Ray2D ray, float maxDistance)
     const int32_t stepY = (dy > 0.0f) ? 1 : (dy < 0.0f) ? -1 : 0;
 
     // World-space center of the *current* cell along each axis
-    // (cell CENTER per R-3E.5, AYTileMath.h:18-19). Walker derives
+    // (cell CENTER per R-3E.5, AY2D/TileMath.h:18-19). Walker derives
     // edges by `center +/- 0.5 * tileSize * sign`; this is the
-    // half-cell trap documented in AYTilemap.h:203-208.
+    // half-cell trap documented in AY2D/Tilemap.h:203-208.
     auto cellCenterX = [&](TileCoord c) -> float {
         return cellToWorld(c, cellOrigin, tileW, tileH).x;
     };

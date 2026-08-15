@@ -10,10 +10,10 @@
 // All assertions are pure CPU math, no bgfx, no cross-module
 // deps.
 
-#include "AYTilemap.h"
+#include "AY2D/Tilemap.h"
 
 #include "AYTest.h"
-#include "AYTileMath.h"
+#include "AY2D/TileMath.h"
 
 using namespace ayt::ay2d;
 

@@ -1,5 +1,5 @@
 #pragma once
-// AYWorld2D.h — Phase 3 real impl (Phase 0/1+/2 had a placeholder).
+// AY2D/World2D.h — Phase 3 real impl (Phase 0/1+/2 had a placeholder).
 //
 // design.md §3 + §3.4: World2D is the logical root of a 2D scene;
 // it owns the tilemap registry, the resource layer dependency, and
@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-#include "AY2DCounters.h"
+#include "AY2D/2DCounters.h"
 
 namespace ayt::ay2d {
 
@@ -43,7 +43,7 @@ struct TilemapHandle {
 
 // P3H.2 + P3H.3 (§13.14 / §13.19): read-only view of one
 // `World2D::Entry`. The struct lives in this header (not in
-// `AYWorld2DSnapshot.h`) so both `World2D::foreachTilemapView`
+// `AY2D/World2DSnapshot.h`) so both `World2D::foreachTilemapView`
 // (header-inline template, P3H.3) and `World2DSnapshot` (P3H.2)
 // can include it without a circular dependency.
 //
@@ -66,7 +66,7 @@ struct [[deprecated("TilemapBinding is dead code; use TilemapEntryView via World
     uint32_t      sortingKey = 0;  // 0..0xFFFFFF
 };
 
-// Forward-declared to keep AYWorld2D.h free of AYResource include.
+// Forward-declared to keep AY2D/World2D.h free of AYResource include.
 // The actual .aytilemap Loader wiring lands in Phase 3+ via the
 // cross-module PR in design.md §4.2.1.
 class IAYTilemap;
@@ -76,7 +76,7 @@ class IAYTilemap;
 // World2D-side metadata (this struct), NOT in `Tilemap` itself,
 // because today `World2D::Entry` is the only registry that
 // carries per-tilemap identity (`IAYTilemap* resource` is the
-// future loader hook). The `Tilemap` struct (AYTilemap.h) holds
+// future loader hook). The `Tilemap` struct (AY2D/Tilemap.h) holds
 // only the tile-id array + animation table; it has no
 // `chunkSource` accessor. Cross-module PR to AYResource will
 // own the resource-side binding; this declaration only describes
@@ -114,7 +114,7 @@ struct World2D {
 
     // Telemetry counters (design.md §10.1.1). Owned by the
     // world; consumers mirror the AYPhysics pattern (see
-    // AYPhysicsManager.h:77-79).
+    // AYPhysics/PhysicsManager.h:77-79).
     Ay2DCounters counters;
 
     // -----------------------------------------------------------------------

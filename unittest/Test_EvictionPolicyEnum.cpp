@@ -1,7 +1,7 @@
 // Test_EvictionPolicyEnum.cpp - P3J.5 / A-12 EvictionPolicy reserved values.
 //
 // design.md §13.29. The EvictionPolicy enum
-// (include/AYTilemapBudget.h) ships with three values
+// (include/AY2D/TilemapBudget.h) ships with three values
 // (LRU=0, Distance=1, TimeWindow=2) backed by uint8_t.
 // Phase 4 streaming PR (R-3G.1) will add new policies; this
 // test locks the underlying-type discipline, the canonical
@@ -10,7 +10,7 @@
 
 #include <type_traits>
 
-#include "AYTilemapBudget.h"
+#include "AY2D/TilemapBudget.h"
 
 #include "AYTest.h"
 

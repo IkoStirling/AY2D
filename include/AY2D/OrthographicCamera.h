@@ -1,5 +1,5 @@
 #pragma once
-// AYOrthographicCamera.h — Phase 3 real impl.
+// AY2D/OrthographicCamera.h — Phase 3 real impl.
 //
 // design.md §3 + §5.3: OrthographicCamera owns the view-projection
 // math for a 2D scene. The matrices are stored as `ayt::math::Float4x4`

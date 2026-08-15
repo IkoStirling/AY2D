@@ -7,10 +7,10 @@
 // rather than going through `eraseByKey`, so the bump is not
 // double-counted.
 
-#include "AYInMemoryTilemapChunkSource.h"
+#include "AY2D/InMemoryTilemapChunkSource.h"
 
-#include "AYChunkData.h"
-#include "AYTileCoord.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/TileCoord.h"
 
 #include "AYTest.h"
 

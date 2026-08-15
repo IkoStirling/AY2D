@@ -7,8 +7,8 @@
 // The snapshot is read-only; mutating the originating World2D
 // after `build()` must NOT affect the snapshot.
 
-#include "AYWorld2D.h"
-#include "AYWorld2DSnapshot.h"
+#include "AY2D/World2D.h"
+#include "AY2D/World2DSnapshot.h"
 
 #include "AYTest.h"
 

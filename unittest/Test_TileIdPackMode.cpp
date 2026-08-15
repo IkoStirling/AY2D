@@ -12,7 +12,7 @@
 
 #include <cstdint>
 
-#include "AYTilemap.h"
+#include "AY2D/Tilemap.h"
 #include "AYTest.h"
 
 using ayt::ay2d::TileIdPackMode;

@@ -10,9 +10,9 @@
 //
 // All assertions are pure CPU, no bgfx, no cross-module deps.
 
-#include "AYTileCollision.h"
-#include "AYTilemap.h"
-#include "AYTilemapCollisionAdapter.h"
+#include "AY2D/TileCollision.h"
+#include "AY2D/Tilemap.h"
+#include "AY2D/TilemapCollisionAdapter.h"
 
 #include "AYTest.h"
 

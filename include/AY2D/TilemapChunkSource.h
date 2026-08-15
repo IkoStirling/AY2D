@@ -1,5 +1,5 @@
 #pragma once
-// AYTilemapChunkSource.h — async chunk IO interface (Phase 2).
+// AY2D/TilemapChunkSource.h — async chunk IO interface (Phase 2).
 //
 // design.md §6.2 + §6.3: a Tilemap pulls chunks via this interface.
 // Producers (e.g. .aytilemap loader, future procedural generator)
@@ -17,9 +17,9 @@
 // request when the camera moves away before IO completes
 // (design.md §6.2.3 / R-7: chunk IO is Present-lane only).
 
-#include "AYChunkData.h"
-#include "AYChunkRequestHandle.h"
-#include "AYTileCoord.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/ChunkRequestHandle.h"
+#include "AY2D/TileCoord.h"
 
 namespace ayt::ay2d {
 

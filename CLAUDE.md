@@ -6,12 +6,12 @@
 ## 当前状态 — D3 in-AY2D `TilemapCollisionQueryAdapter::raycast` Amanatides-Woo DDA walker (A-7, 2026-07-31, **Phase 3K ship**)
 
 - `design.md` 是权威设计（v0.1.31 + audit F-1..F-19 + Changelog §13.1..§13.35 + §13.PF + §14 P3C + §15 P3D + §16 P3E + §17 P3F + §18 P3G + §18.7 P3I.2 + §13.22 P3I.3 + §13.23 P3I.4 + §13.24..§13.33 P3J + §13.34 P3J-hygiene + §13.35 D3 + §8.1.1 walker spec）。代码与 design.md 不一致时，design.md 优先。
-- 子模块 HEAD = D3：`TilemapCollisionQueryAdapter::raycast` 实现 §13.13 placeholder → §13.35 真实 Amanatides-Woo 2D DDA walker（~110 行 body + 3 新 include `<cmath>` / `<limits>` / `AYTileMath.h`）。Walker 是 geometry-only；resolver consumer 跨模块 (§4.2.1)。
+- 子模块 HEAD = D3：`TilemapCollisionQueryAdapter::raycast` 实现 §13.13 placeholder → §13.35 真实 Amanatides-Woo 2D DDA walker（~110 行 body + 3 新 include `<cmath>` / `<limits>` / `AY2D/TileMath.h`）。Walker 是 geometry-only；resolver consumer 跨模块 (§4.2.1)。
 - `unittest/` 现在有 **34** 个 test 文件 / **1414** CHECK assertions PASS（P3J 34/1372 → D3 34/1414 = +42 CHECK, +0 suite；9 个 D3 case + 1 reshape = 10 cases / 42 CHECK delta in `TileCollisionQuerySuite` 7→16 cases / 22→64 CHECK；3× consecutive **incremental** green locked + cold-configure green after D3 feat）。bgfx-leak guard green。
 - 锁行为（L-3D-1..L-3D-6 全部生效；L-3J-1..L-3J-10 持续生效；L-3I-1..L-3I-13 持续生效；§3.4 epoch / §13.14 view shape / §13.19 view shape / §18.7 one-source-per-tilemap / L-3 / L-4 / R-10 全部守住）。
 - **R-10 lock 守住**：AY2D 没有 AYAnimation include / link。
 - `add_library(AY2D STATIC ${SRC_FILES})` 持续生效；`target_link_libraries(AY2D PUBLIC AYMath AYLog)` 持续生效。
-- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（21 public headers scanned, 0 leaks；D3 公共头增量仅 `AYTilemapCollisionAdapter.h` raycast docblock，无 bgfx 路径；D3 .cpp walker body 0 bgfx/bx 路径 per G2 gate）。
+- `cmake/CheckNoBgfxInPublicHeaders.cmake` 是 bgfx-leak guard (§11.2 / F-5)；双向验证已通过（21 public headers scanned, 0 leaks；D3 公共头增量仅 `AY2D/TilemapCollisionAdapter.h` raycast docblock，无 bgfx 路径；D3 .cpp walker body 0 bgfx/bx 路径 per G2 gate）。
 - **Phase 3K 完整 ship** (1/1 slice + J-env root ops still active: D3 L-3D-1..6 six new locks / L-3D-1 walker early-exit predicate `flagsAtRaw(c) != Empty` / L-3D-2 `hit.t` along ORIGINAL direction (pointAt invariant) / L-3D-3 degenerate direction → no-hit sentinel / L-3D-4 OOB origin → snap / L-3D-5 ray.tMin skip leading cells / L-3D-6 maxDistance hard cutoff inclusive)。跨模块 PR (CM-1..CM-5) 仍按 `design.md` §4.2.1 deferred。**Phase 3L / 下一波 in-AY2D residue = 无**（Phase 3I + 3J + 3K 已清空所有 listed residue）。§8.1 doc-vs-code drift (4-param form vs shipped 2-param) logged in §13.35 — NOT fixed here, separate hygiene commit.
 
 ## 重要规则
@@ -30,7 +30,7 @@
 - 子模块 / 目录：`AYRuntime/AY2D`（无前缀拼写例外）。
 - 命名空间：`ayt::ay2d`（与 `ayt::physics` / `ayt::entity` / `ayt::render` 同级）。
 - 公共类名**不带** `AY` 前缀（`World2D` / `Tilemap` / `Sprite` / `OrthographicCamera` / `ITileCollisionQuery` / `ITilemapChunkSource`）。
-- 公共头文件名带 `AY` 前缀（`AYWorld2D.h` / `AYTilemap.h` / `AYSprite.h` / `AYOrthographicCamera.h` / `AYTileCollision.h` / `AYTilemapChunkSource.h`）。
+- 公共头文件名带 `AY` 前缀（`AY2D/World2D.h` / `AY2D/Tilemap.h` / `AY2D/Sprite.h` / `AY2D/OrthographicCamera.h` / `AY2D/TileCollision.h` / `AY2D/TilemapChunkSource.h`）。
 - 接口类型 `I` 前缀。
 - 私有成员 `_` 前缀 camelCase；公共成员 plain camelCase。
 - 测试：`unittest/Test_<Subject>.cpp` 一文件一 TU；用 AYTest 的 `TEST_SUITE` / `TEST_CASE` / `CHECK_*`。

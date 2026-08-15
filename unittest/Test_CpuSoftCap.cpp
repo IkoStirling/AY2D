@@ -8,12 +8,12 @@
 // All assertions use real `counters().snapshot()` deltas — same
 // discipline as P3C Test_CountersWired + P3G Test_ChunkSourceBudget.
 
-#include "AYInMemoryTilemapChunkSource.h"
+#include "AY2D/InMemoryTilemapChunkSource.h"
 
-#include "AY2DCounters.h"
-#include "AYChunkData.h"
+#include "AY2D/2DCounters.h"
+#include "AY2D/ChunkData.h"
 #include "AYTest.h"
-#include "AYTilemapBudget.h"
+#include "AY2D/TilemapBudget.h"
 
 using namespace ayt::ay2d;
 

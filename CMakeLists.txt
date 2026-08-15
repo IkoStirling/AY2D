@@ -55,10 +55,11 @@ set(SRC_FILES
 add_library(${MODULE_NAME} STATIC ${SRC_FILES})
 
 target_include_directories(${MODULE_NAME} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
     # Public headers live flat under `include/` (matches sibling
     # convention: AYPhysics/AYRenderer put public headers directly in
     # `include/` with no subdirectory). Consumers write
-    # `#include "AYWorld2D.h"` (no namespace prefix in the include path)
+    # `#include "AY2D/World2D.h"` (no namespace prefix in the include path)
     # or use the umbrella `#include <AY2D.h>`.
     #
     # PUBLIC (not INTERFACE) is required: when the target type flips
@@ -78,7 +79,7 @@ target_include_directories(${MODULE_NAME} PUBLIC
 # (std::* containers only). Phase 3A added `AYMath` for
 # `OrthographicCamera` (`ayt::math::Float4x4` view/proj matrices,
 # design.md §3); Phase 3E reuses the same `AYMath` dep for the
-# new `ayt::math::FVector2` surface in `AYTileMath.h` / world-
+# new `ayt::math::FVector2` surface in `AY2D/TileMath.h` / world-
 # coord `setTile` overloads.
 #
 # Phase 3+ (cross-module PRs, §4.2.1) adds:

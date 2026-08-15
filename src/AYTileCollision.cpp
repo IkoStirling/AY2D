@@ -1,5 +1,5 @@
 // AYTileCollision.cpp — Phase 5 out-of-line definitions for
-// types declared in `AYTileCollision.h`.
+// types declared in `AY2D/TileCollision.h`.
 //
 // design.md §8.1 + §11 Phase 5 row.
 //
@@ -7,7 +7,7 @@
 // additions (e.g. a SIMD `pointAt4` for batch raycasts) can grow
 // in this TU without header churn.
 
-#include "AYTileCollision.h"
+#include "AY2D/TileCollision.h"
 
 namespace ayt::ay2d {
 

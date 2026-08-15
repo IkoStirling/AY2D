@@ -1,5 +1,5 @@
 #pragma once
-// AYSpriteSheet.h — P3H.1 in-AY2D SpriteSheet thin wrapper.
+// AY2D/SpriteSheet.h — P3H.1 in-AY2D SpriteSheet thin wrapper.
 //
 // design.md §13.18 (P3H.1 changelog) + §3 / §5.5:
 // `SpriteSheet` is the in-AY2D value type that pairs an
@@ -30,8 +30,8 @@
 
 #include "AYMath/MathTypes.h"
 
-#include "AYAtlasDesc.h"
-#include "AYTileSamplerUV.h"
+#include "AY2D/AtlasDesc.h"
+#include "AY2D/TileSamplerUV.h"
 
 namespace ayt::ay2d {
 

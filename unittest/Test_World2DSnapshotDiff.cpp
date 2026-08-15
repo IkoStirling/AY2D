@@ -16,8 +16,8 @@
 // against a live `World2D` - same discipline as
 // P3C Test_CountersWired + P3I.2 Test_World2DRemoveTilemapPurge.
 
-#include "AYWorld2D.h"
-#include "AYWorld2DSnapshot.h"
+#include "AY2D/World2D.h"
+#include "AY2D/World2DSnapshot.h"
 
 #include "AYTest.h"
 

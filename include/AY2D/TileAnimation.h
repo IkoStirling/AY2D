@@ -1,5 +1,5 @@
 #pragma once
-// AYTileAnimation.h — Phase 3B per-tile animation table.
+// AY2D/TileAnimation.h — Phase 3B per-tile animation table.
 //
 // design.md §7.2: (tileId -> [frameTileId, durationMs]*) lives on
 // Tilemap. Frame change is batched per system tick. The table is

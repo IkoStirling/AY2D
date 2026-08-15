@@ -14,11 +14,11 @@
 #include <cstdint>
 #include <thread>
 
-#include "AY2DCounters.h"
-#include "AYChunkData.h"
-#include "AYInMemoryTilemapChunkSource.h"
+#include "AY2D/2DCounters.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/InMemoryTilemapChunkSource.h"
 #include "AYTest.h"
-#include "AYTileCoord.h"
+#include "AY2D/TileCoord.h"
 
 using namespace ayt::ay2d;
 

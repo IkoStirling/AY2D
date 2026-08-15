@@ -1,5 +1,5 @@
 #pragma once
-// AYTileRect.h — Phase 3D batch tile-fill rectangle type.
+// AY2D/TileRect.h — Phase 3D batch tile-fill rectangle type.
 //
 // design.md §15.3 + §15.7 R-3D.1: half-open `[min, max)` rect.
 // A `TileRect{ 1, 2, 3, 4 }` covers columns {1, 2} and rows
@@ -13,7 +13,7 @@
 //
 // Lifetime: POD-equivalent. No allocation. Header-only so the
 // batch helpers in `src/AYTilemapBatch.cpp` and the consumers
-// (`include/AYTilemap.h`) share the same type without including
+// (`include/AY2D/Tilemap.h`) share the same type without including
 // each other's TU.
 //
 // New public API surface in Phase 3D; no cross-module PR needed

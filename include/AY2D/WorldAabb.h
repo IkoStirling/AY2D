@@ -1,5 +1,5 @@
 #pragma once
-// AYWorldAabb.h — Phase 3F camera world-AABB helper.
+// AY2D/WorldAabb.h — Phase 3F camera world-AABB helper.
 //
 // design.md §17.4 + R-3F.2: derive the camera's world-space AABB
 // from `OrthographicCamera`. The derivation is intentionally
@@ -21,7 +21,7 @@
 
 #include "AYMath/MathTypes.h"  // FRectangle + FVector2
 
-#include "AYOrthographicCamera.h"
+#include "AY2D/OrthographicCamera.h"
 
 namespace ayt::ay2d {
 

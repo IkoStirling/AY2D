@@ -15,7 +15,7 @@
 
 #include <cstdint>
 
-#include "AYChunkRequestHandle.h"
+#include "AY2D/ChunkRequestHandle.h"
 #include "AYTest.h"
 
 using ayt::ay2d::ChunkRequestHandle;

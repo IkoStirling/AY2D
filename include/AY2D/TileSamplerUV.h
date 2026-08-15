@@ -1,5 +1,5 @@
 #pragma once
-// AYTileSamplerUV.h — pure-CPU tile sampler UV math.
+// AY2D/TileSamplerUV.h — pure-CPU tile sampler UV math.
 //
 // design.md §5.1 + §5.2 + §5.3. Header-only: no .cpp necessary
 // because the math is constexpr-friendly (used in unit tests AND
@@ -26,8 +26,8 @@
 
 #include <cstdint>
 
-#include "AYAtlasDesc.h"
-#include "AYTileCoord.h"
+#include "AY2D/AtlasDesc.h"
+#include "AY2D/TileCoord.h"
 
 namespace ayt::ay2d {
 

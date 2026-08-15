@@ -22,15 +22,15 @@
 #include <cstdint>
 #include <thread>
 
-#include "AY2DCounters.h"
-#include "AYChunkData.h"
-#include "AYChunkRequestHandle.h"
-#include "AYInMemoryTilemapChunkSource.h"
+#include "AY2D/2DCounters.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/ChunkRequestHandle.h"
+#include "AY2D/InMemoryTilemapChunkSource.h"
 #include "AYTest.h"
-#include "AYTileCoord.h"
-#include "AYTileLoadState.h"
-#include "AYTilemap.h"
-#include "AYWorld2D.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/TileLoadState.h"
+#include "AY2D/Tilemap.h"
+#include "AY2D/World2D.h"
 
 using namespace ayt::ay2d;
 

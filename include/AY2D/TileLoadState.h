@@ -1,5 +1,5 @@
 #pragma once
-// AYTileLoadState.h — load-state enum exposed to ECS inspectors.
+// AY2D/TileLoadState.h — load-state enum exposed to ECS inspectors.
 //
 // design.md §11 Phase 2 / F-18: TilemapComponent::loadState is a
 // typed enum that ECS inspectors + an Editor Inspector use to display

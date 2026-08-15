@@ -1,5 +1,5 @@
 #pragma once
-// AYAtlasDesc.h — atlas metadata contract (Phase 2).
+// AY2D/AtlasDesc.h — atlas metadata contract (Phase 2).
 //
 // design.md §5.5: this struct is the L2-side descriptor that goes
 // alongside the uploaded atlas texture. Sized identically to the

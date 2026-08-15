@@ -6,15 +6,15 @@
 // / getTile / loadChunkFromSource via InMemoryTilemapChunkSource)
 // get round-trip coverage.
 
-#include "AYTilemap.h"
+#include "AY2D/Tilemap.h"
 
 #include <vector>
 
-#include "AYChunkData.h"
-#include "AYChunkRequestHandle.h"
-#include "AYInMemoryTilemapChunkSource.h"
-#include "AYTileCoord.h"
-#include "AYTileLoadState.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/ChunkRequestHandle.h"
+#include "AY2D/InMemoryTilemapChunkSource.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/TileLoadState.h"
 
 #include "AYTest.h"
 

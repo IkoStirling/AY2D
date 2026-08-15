@@ -9,13 +9,13 @@
 //     resident yet (handle bookkeeping so cancel() does the right
 //     thing later).
 
-#include "AYInMemoryTilemapChunkSource.h"
+#include "AY2D/InMemoryTilemapChunkSource.h"
 
 #include <vector>
 
-#include "AYChunkData.h"
-#include "AYChunkRequestHandle.h"
-#include "AYTileCoord.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/ChunkRequestHandle.h"
+#include "AY2D/TileCoord.h"
 
 #include "AYTest.h"
 

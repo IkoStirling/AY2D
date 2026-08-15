@@ -1,5 +1,5 @@
 #pragma once
-// AYTilemapBudget.h — Phase 3G chunk-source budget value-type.
+// AY2D/TilemapBudget.h — Phase 3G chunk-source budget value-type.
 //
 // design.md §6.2 + §18.1: the budget struct shape ships in
 // code so `InMemoryTilemapChunkSource::setBudget` can take it

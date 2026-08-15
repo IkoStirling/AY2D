@@ -10,18 +10,18 @@
 //
 // Out of scope (Phase 5+ or cross-module PR):
 //   - .aytilemap loader / .aytilemap binary format (cross-module
-//     PR to AYResource/interface/assetsDefs/IAYTilemap.h).
+//     PR to AYResource/interface/AYResource/assetsDefs/ITilemap.h).
 //   - Per-tile flagsAt backing store (Phase 5+ replaces the
 //     `Empty` default with a real .aytilemap-backed data source).
 //   - Asynchronous completion via EventBus (Phase 3+).
 
-#include "AYTilemap.h"
+#include "AY2D/Tilemap.h"
 
-#include "AYChunkData.h"
-#include "AYChunkRequestHandle.h"
-#include "AYTileCoord.h"
-#include "AYTileLoadState.h"
-#include "AYTilemapChunkSource.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/ChunkRequestHandle.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/TileLoadState.h"
+#include "AY2D/TilemapChunkSource.h"
 
 namespace ayt::ay2d {
 

@@ -1,7 +1,7 @@
 // Test_TileLoadStateEnum.cpp - P3J.6 / A-7 TileLoadState enum coverage.
 //
 // design.md §13.30. The TileLoadState enum
-// (include/AYTileLoadState.h, Phase 2 F-18) has 4 values
+// (include/AY2D/TileLoadState.h, Phase 2 F-18) has 4 values
 // (Unloaded=0, Loading=1, Loaded=2, Failed=3) backed by
 // uint8_t. ECS inspectors + the Editor Inspector consume
 // this enum (design.md §11 F-18). P3J.6 locks the
@@ -10,8 +10,8 @@
 
 #include <type_traits>
 
-#include "AYTileLoadState.h"
-#include "AYTilemap.h"
+#include "AY2D/TileLoadState.h"
+#include "AY2D/Tilemap.h"
 
 #include "AYTest.h"
 

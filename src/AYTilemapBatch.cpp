@@ -12,15 +12,15 @@
 // The helpers below share storage layout with `Tilemap::setTile` so
 // the existing per-cell code path continues to behave identically.
 
-#include "AYTilemap.h"
+#include "AY2D/Tilemap.h"
 
 #include <cstdint>
 
 #include "AYMath/MathTypes.h"
 
-#include "AYTileCoord.h"
-#include "AYTileMath.h"
-#include "AYTileRect.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/TileMath.h"
+#include "AY2D/TileRect.h"
 
 namespace ayt::ay2d {
 

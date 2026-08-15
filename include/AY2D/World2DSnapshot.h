@@ -1,5 +1,5 @@
 #pragma once
-// AYWorld2DSnapshot.h — P3H.2 in-AY2D read-only value type.
+// AY2D/World2DSnapshot.h — P3H.2 in-AY2D read-only value type.
 //
 // design.md §13.14 (P3H.2 changelog) + §13.PF (C5 TilemapBinding
 // deprecation): this header ships `TilemapEntryView` + `World2DSnapshot`
@@ -35,12 +35,12 @@
 #include <cstdint>
 #include <vector>
 
-#include "AY2DCounters.h"
-#include "AYWorld2D.h"
+#include "AY2D/2DCounters.h"
+#include "AY2D/World2D.h"
 
 namespace ayt::ay2d {
 
-// `TilemapEntryView` is defined in `AYWorld2D.h` (P3H.3 §13.19:
+// `TilemapEntryView` is defined in `AY2D/World2D.h` (P3H.3 §13.19:
 // World2D::foreachTilemapView is a header-inline template that
 // needs the full definition, so the struct now lives next to
 // World2D and is re-exported via the include below). This

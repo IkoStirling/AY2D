@@ -11,7 +11,7 @@
 // scope free functions so private storage (`_cache`, `_index`) stays
 // encapsulated while still being reusable from the .cpp-side impl.
 
-#include "AYInMemoryTilemapChunkSource.h"
+#include "AY2D/InMemoryTilemapChunkSource.h"
 
 #include <algorithm>
 #include <chrono>

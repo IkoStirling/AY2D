@@ -22,7 +22,7 @@
 #include <algorithm>
 #include <vector>
 
-#include "AYSprite.h"
+#include "AY2D/Sprite.h"
 #include "AYTest.h"
 
 using namespace ayt::ay2d;

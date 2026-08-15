@@ -7,7 +7,7 @@
 // non-divisible atlas/tile ratio, default filter) to a dedicated
 // suite.
 
-#include "AYAtlasDesc.h"
+#include "AY2D/AtlasDesc.h"
 
 #include "AYTest.h"
 

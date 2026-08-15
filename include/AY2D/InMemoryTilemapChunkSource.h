@@ -1,5 +1,5 @@
 #pragma once
-// AYInMemoryTilemapChunkSource.h — Phase 2 chunk-source backend
+// AY2D/InMemoryTilemapChunkSource.h — Phase 2 chunk-source backend
 // implementation contract.
 //
 // design.md §6.2: a chunk source is the unit test's mount point
@@ -23,12 +23,12 @@
 #include <unordered_map>
 #include <vector>
 
-#include "AY2DCounters.h"
-#include "AYChunkData.h"
-#include "AYChunkRequestHandle.h"
-#include "AYTileCoord.h"
-#include "AYTilemapBudget.h"
-#include "AYTilemapChunkSource.h"
+#include "AY2D/2DCounters.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/ChunkRequestHandle.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/TilemapBudget.h"
+#include "AY2D/TilemapChunkSource.h"
 
 namespace ayt::ay2d {
 

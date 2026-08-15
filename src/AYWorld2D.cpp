@@ -14,8 +14,8 @@
 // replaces these with TilemapResourceHandle (strong-ref LRU handle)
 // once AYResource ships the IAYTilemap interface.
 
-#include "AYWorld2D.h"
-#include "AYTilemapChunkSource.h"  // P3I.2: need the full type to call purgeChunks()
+#include "AY2D/World2D.h"
+#include "AY2D/TilemapChunkSource.h"  // P3I.2: need the full type to call purgeChunks()
 
 #include <algorithm>
 

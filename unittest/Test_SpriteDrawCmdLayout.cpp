@@ -1,6 +1,6 @@
 // Test_SpriteDrawCmdLayout.cpp - P3J.2 / A-3 layout static_assert.
 //
-// design.md §13.26. The SpriteDrawCmd POD (include/AYSpriteDrawCmd.h,
+// design.md §13.26. The SpriteDrawCmd POD (include/AY2D/SpriteDrawCmd.h,
 // shipped Phase 3F v0.1.9) had a manual layout comment claiming
 // 88 B; P3J.2 discovered the actual size is 112 B because MSVC's
 // FVector2 / FVector4 are 16-B-aligned SIMD types (see 踩坑 #33 /
@@ -8,7 +8,7 @@
 // layout comment was corrected in the header; this test promotes
 // the corrected layout to a hard lock.
 
-#include "AYSpriteDrawCmd.h"
+#include "AY2D/SpriteDrawCmd.h"
 
 #include <cstddef>
 #include <type_traits>

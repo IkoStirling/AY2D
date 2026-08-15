@@ -1,11 +1,11 @@
 #pragma once
-// AYChunkData.h — chunk payload structure (Phase 2, header-only).
+// AY2D/ChunkData.h — chunk payload structure (Phase 2, header-only).
 //
 // design.md §6.2: A ChunkData is the unit of tile-id storage that
 // ITilemapChunkSource delivers to the cache. The struct holds exactly
 // one of two vector payloads (`tileIds16` or `tileIds32`) — never both,
 // never mixed — selected by the `mode` flag (mirrors TileIdPackMode
-// declared in AYTileCoord.h, included here so this header is
+// declared in AY2D/TileCoord.h, included here so this header is
 // self-contained).
 //
 // Why vector-of-tile-id (not a raw pointer / span): the loader is
@@ -18,9 +18,9 @@
 #include <cstdint>
 #include <vector>
 
-#include "AYChunkRequestHandle.h"
-#include "AYTileCoord.h"
-#include "AYTileLoadState.h"
+#include "AY2D/ChunkRequestHandle.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/TileLoadState.h"
 
 namespace ayt::ay2d {
 

@@ -1,5 +1,5 @@
 #pragma once
-// AY2DCounters.h — Phase 3 profiling counters for AY2D.
+// AY2D/2DCounters.h — Phase 3 profiling counters for AY2D.
 //
 // design.md §10.1.1 (F-8): AY2D ships six `ay2d_<metric>_<unit>`
 // counters as instance fields on the owning object (not TU-static

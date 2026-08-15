@@ -1,10 +1,10 @@
 #pragma once
-// AYSpriteCulling.h — Phase 3F sprite scene builder public surface.
+// AY2D/SpriteCulling.h — Phase 3F sprite scene builder public surface.
 //
 // design.md §17.1 + §17.3: free function `buildSpriteScene` lives
 // in `src/AYSpriteCulling.cpp`. The header surfaces only the
 // declaration + the helper `WorldAabb` (which is in
-// `AYWorldAabb.h` to keep header-only inclusion on the camera
+// `AY2D/WorldAabb.h` to keep header-only inclusion on the camera
 // side). The function signature is locked (R-3F.3): it walks
 // `sprites`, AABB- and layer-mask-culls against `camera`,
 // stable-sorts the survivors by `packedSortKey`, and emits
@@ -18,9 +18,9 @@
 #include <cstdint>
 #include <vector>
 
-#include "AYOrthographicCamera.h"
-#include "AYSprite.h"
-#include "AYSpriteDrawCmd.h"
+#include "AY2D/OrthographicCamera.h"
+#include "AY2D/Sprite.h"
+#include "AY2D/SpriteDrawCmd.h"
 
 namespace ayt::ay2d {
 

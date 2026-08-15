@@ -1,5 +1,5 @@
 #pragma once
-// AYSpriteDrawCmd.h — Phase 3F sprite scene data carrier.
+// AY2D/SpriteDrawCmd.h — Phase 3F sprite scene data carrier.
 //
 // design.md §17.1 + R-3F.1: AY2D ships its **own** POD record
 // for the sprite scene built by `buildSpriteScene(...)`. The
@@ -37,7 +37,7 @@
 
 #include "AYMath/MathTypes.h"
 
-#include "AYSprite.h"
+#include "AY2D/Sprite.h"
 
 namespace ayt::ay2d {
 

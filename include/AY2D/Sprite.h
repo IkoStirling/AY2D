@@ -1,5 +1,5 @@
 #pragma once
-// AYSprite.h — Phase 3B real impl.
+// AY2D/Sprite.h — Phase 3B real impl.
 //
 // design.md §3 + §7: Sprite is a single-image or atlas sub-rect
 // draw intent. The struct holds:

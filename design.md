@@ -12,7 +12,7 @@ Related docs:
 - [`ENGINE-DETERMINISM-ARCHITECTURE.md`](../../ENGINE-DETERMINISM-ARCHITECTURE.md) — Present/Sim lane discipline §1.3 / §4 / §6 (forbid Jolt under lockstep).
 - [`ENGINE-FOUNDATION-PLAN.md`](../../ENGINE-FOUNDATION-PLAN.md) — three-layer asset model §2.1 / §2.3, RenderSystem pattern §5.6, DrawItem payload pattern §5.7.
 - [`AYRuntime/AYRenderer/design.md`](../AYRenderer/design.md) — §13 R5+ 2D migration backlog, §14 testing discipline (sticky-Noop + 3× green baseline).
-- [`AYRuntime/AYRenderer/include/AYRenderTypes.h`](../AYRenderer/include/AYRenderTypes.h) — `RenderPassSlot` append-only invariant.
+- [`AYRuntime/AYRenderer/include/AYRenderer/RenderTypes.h`](../AYRenderer/include/AYRenderer/RenderTypes.h) — `RenderPassSlot` append-only invariant.
 - [`AYRuntime/AYResource/design.md`](../AYResource/design.md) — L1/L2/L3 contract, versioned `.ay*` policy.
 - [`AYRuntime/AYPhysics/design.md`](../AYPhysics/design.md) — §4.2 / §6.4 / §17.8 (2D backend TBD; checklist gate).
 - [`AYRuntime/AYShader/design.md`](../AYShader/design.md) — §2.1 / §8.5 (ShaderResourcePool + variant tag policy).
@@ -52,7 +52,7 @@ AY2D does **not**:
 - Mix into `RenderScene` / `DrawItem`'s existing 3D fields (it will reuse the `DrawItem::payload` extension pattern described in [ENGINE-FOUNDATION-PLAN §5.7](../../ENGINE-FOUNDATION-PLAN.md) §5.7).
 - Depend on `AYUI` (per [capability-map §E L85](../docs/first-game-engine-capability-map.md)).
 - Add a 2D physics resolver or pick a 2D backend (per [AYPhysics §4.2](../AYPhysics/design.md) §4.2 "2D backend TBD").
-- Reorder or repurpose any existing `RenderPassSlot` enum value (per [AYRenderTypes.h](../AYRenderer/include/AYRenderTypes.h) append-only invariant).
+- Reorder or repurpose any existing `RenderPassSlot` enum value (per [AYRenderer/RenderTypes.h](../AYRenderer/include/AYRenderer/RenderTypes.h) append-only invariant).
 
 AY2D will, in later phases:
 
@@ -85,8 +85,8 @@ AY2D will, in later phases:
 | **Public headers contain zero `<bgfx/bgfx.h>`** | [AYRendering-Architecture-Roadmap §10.5](../../AYRendering-Architecture-Roadmap.md) |
 | **Public headers never include `<AYRenderer/src/detail/*>`** | Public/private include discipline in [`AYRenderer/CMakeLists.txt`](../AYRenderer/CMakeLists.txt) |
 | **No dependency on `AYUI`** | [Capability-map §E L85](../docs/first-game-engine-capability-map.md) — hard constraint |
-| **Public headers carry only opaque handles / paths / math types** | L-3, L-16; mirrors `DrawItem::mesh` / `DrawItem::material` pattern in [AYRenderScene.h](../AYRenderer/include/AYRenderScene.h) |
-| **No direct `bgfx::submit` or `ShaderResourcePool::acquire` in ECS or game code** | ECS components hold path / handle, never GPU handle; mirrors [`AYMeshComponent.h`](../AYEntity/include/components/AYMeshComponent.h) |
+| **Public headers carry only opaque handles / paths / math types** | L-3, L-16; mirrors `DrawItem::mesh` / `DrawItem::material` pattern in [AYRenderer/RenderScene.h](../AYRenderer/include/AYRenderer/RenderScene.h) |
+| **No direct `bgfx::submit` or `ShaderResourcePool::acquire` in ECS or game code** | ECS components hold path / handle, never GPU handle; mirrors [`AYEntity/components/AYEntity/components/AYEntity/components/AYEntity/components/MeshComponent.h`](../AYEntity/include/AYEntity/components/MeshComponent.h) |
 
 ### 2.3 Allowed dependencies
 
@@ -130,7 +130,7 @@ AY2D inherits this prose-only convention. Each AY2D system carries a `// Lane: <
 | `TilemapPathfindingSystem` (Phase 7+) | **Sim** | `ayt::time::Clock::simNow` | 700+ | Reads `IPathfinder`; emits path results via EventBus or component. |
 | `OrthographicCameraUpdateSystem` | **Present** | `ayt::time::Clock::gameNow` | 405 (early — before render) | Updates `OrthographicCamera::view/proj` matrices; push to `Renderer::setMainCamera`. |
 
-The registration helper in Phase 1+ is `register2DSystem<T>(int32_t priority)` in `AY2D/include/AY2D/AYEntityIntegration.h`. It mirrors the existing `registerAnimationSystem()` / `registerSkinnedMeshRenderSystem()` pattern (`AYEntity/include/AYEntityModule.h`). It MUST be idempotent (re-check `World::hasSystemNamed` before adding — same pattern as `AYEntityModule.cpp:28-74`).
+The registration helper in Phase 1+ is `register2DSystem<T>(int32_t priority)` in `AY2D/include/AY2D/AYEntityIntegration.h`. It mirrors the existing `registerAnimationSystem()` / `registerSkinnedMeshRenderSystem()` pattern (`AYEntity/include/AYEntity/EntityModule.h`). It MUST be idempotent (re-check `World::hasSystemNamed` before adding — same pattern as `AYEntityModule.cpp:28-74`).
 
 **No lane parameter is added to `World::registerSystem` in Phase 0** — that change belongs to DET-04.
 
@@ -180,7 +180,7 @@ Strict one-way graph. Forbidden cells must compile-fail in the public-header sur
 
 ### 4.1 Locks
 
-- **L-15**: AY2D does **not** push components into `AYEntity` directly; it ships **components** that ECS users opt in to via a `register2DSystem()` helper analogous to `registerAnimationSystem()` in [`AYEntityModule.h`](../AYEntity/include/AYEntityModule.h).
+- **L-15**: AY2D does **not** push components into `AYEntity` directly; it ships **components** that ECS users opt in to via a `register2DSystem()` helper analogous to `registerAnimationSystem()` in [`AYEntity/EntityModule.h`](../AYEntity/include/AYEntity/EntityModule.h).
 - **L-5**: AY2D does **not** modify `AYRenderer` public headers beyond the documented `DrawItem::payload` append (see §5.4 + §7 of [ENGINE-FOUNDATION-PLAN](../../ENGINE-FOUNDATION-PLAN.md)).
 - **L-4**: AY2D does **not** link `AYUI`. Editor glue lives in `AYEditor`, not `AY2D`.
 - **L-16**: ECS components hold only path / opaque handle / world matrix. GPU handles never leave `AYRenderer`.
@@ -191,22 +191,22 @@ Strict one-way graph. Forbidden cells must compile-fail in the public-header sur
 |---|---|
 | `d:\Projects\CMakeLists.txt` | (untouched) |
 | `d:\Projects\.gitmodules` | (untouched) |
-| `d:\Projects\AYRuntime\AYRenderer/include/AYRenderTypes.h` | (untouched; slot append is Phase 1+) |
-| `d:\Projects\AYRuntime\AYRenderer/include/AYRenderScene.h` | (untouched; payload append is Phase 2+) |
+| `d:\Projects\AYRuntime\AYRenderer/include/AYRenderer/RenderTypes.h` | (untouched; slot append is Phase 1+) |
+| `d:\Projects\AYRuntime\AYRenderer/include/AYRenderer/RenderScene.h` | (untouched; payload append is Phase 2+) |
 | `d:\Projects\AYRuntime\AYRenderer/src/detail/*` | (untouched) |
 | `d:\Projects\AYRuntime\AYEntity/include/components/*` | (untouched; new components in Phase 2+) |
 | `d:\Projects\AYRuntime\AYEntity/CMakeLists.txt` | (untouched; static `set(SOURCES ...)` requires manual edit in Phase 2+) |
-| `d:\Projects\AYRuntime\AYResource/interface/assetsDefs/*` | (untouched; `IAYTilemap.h` / `IAYTileset.h` in Phase 2+) |
+| `d:\Projects\AYRuntime\AYResource/interface/assetsDefs/*` | (untouched; `AYResource/assetsDefs/ITilemap.h` / `IAYTileset.h` in Phase 2+) |
 
 #### 4.2.1 Cross-module PR ownership (F-6)
 
-When AY2D later needs to modify a file owned by another module (e.g. Phase 2 must add `RenderPassSlot::Forward2DOpaque` to `AYRenderer/include/AYRenderTypes.h`, `DrawItem::payload` to `AYRenderer/include/AYRenderScene.h`, `AYTileMapComponent` to `AYEntity/include/components/`, `IAYTilemap.h` to `AYResource/interface/assetsDefs/`), the rules are:
+When AY2D later needs to modify a file owned by another module (e.g. Phase 2 must add `RenderPassSlot::Forward2DOpaque` to `AYRenderer/include/AYRenderer/RenderTypes.h`, `DrawItem::payload` to `AYRenderer/include/AYRenderer/RenderScene.h`, `AYTileMapComponent` to `AYEntity/include/components/`, `AYResource/assetsDefs/ITilemap.h` to `AYResource/interface/assetsDefs/`), the rules are:
 
 | Cross-module change | Owned by | AY2D author role | Merge gate |
 |---|---|---|---|
 | `RenderPassSlot` append, `DrawItem` payload, RenderScene 2D shape | `AYRenderer` maintainer | Submit cross-module PR, **do not self-merge** | Reviewed + merged by `AYRenderer` maintainer. The AY2D PR description must reference the AY2D design §1 / §3 / §7.1 lock rationale. |
 | ECS component / system / `register2DSystem()` helper, `World::query<TileMapComponent, Transform>` patterns | `AYEntity` maintainer | Submit cross-module PR, do not self-merge | Reviewed + merged by `AYEntity` maintainer. The PR must not break existing `set(SOURCES ...)` static list — new `.cpp` files are appended. |
-| `IAYTilemap.h` / `IAYTileset.h` / `.aytilemap`+`.ayatlas` Loader/Converter/`assetsImpl` four-piece | `AYResource` maintainer | Submit cross-module PR, do not self-merge | Reviewed + merged by `AYResource` maintainer. The PR must respect L1/L2/L3 layering (§9.3) and the `.aymesh` extension-chunk precedent (§9.2). |
+| `AYResource/assetsDefs/ITilemap.h` / `IAYTileset.h` / `.aytilemap`+`.ayatlas` Loader/Converter/`assetsImpl` four-piece | `AYResource` maintainer | Submit cross-module PR, do not self-merge | Reviewed + merged by `AYResource` maintainer. The PR must respect L1/L2/L3 layering (§9.3) and the `.aymesh` extension-chunk precedent (§9.2). |
 | New shader variant tags (`tilemap.phoskia`, `tilemap_9tap.phoskia`) | `AYShader` maintainer | Submit cross-module PR, do not self-merge | Reviewed + merged by `AYShader` maintainer. No new shader file type. |
 | 2D collision query interface (`ITileCollisionQuery` consumer side) | `AYPhysics` maintainer | Submit cross-module PR, do not self-merge | Reviewed + merged by `AYPhysics` maintainer. AY2D never owns a physics backend. |
 
@@ -326,7 +326,7 @@ The chosen `TileIdPackMode` is part of `.aytilemap` header (see §9.1) — `mode
 ### 6.2 `TilemapChunkSource` interface (Phase 0 shape only)
 
 ```cpp
-// include/AY2D/AYTilemapChunkSource.h — Phase 0 interface shape only
+// include/AY2D/TilemapChunkSource.h — Phase 0 interface shape only
 namespace ayt::ay2d {
 
 // Forward-declared opaque async token. Phase 1+ provides the concrete
@@ -392,9 +392,9 @@ public:
 
 AY2D inherits the existing engine hot-reload policy rather than inventing a new one:
 
-- **Whole-second mtime polling** via `AYHotReloadWatcher` (default 1.0 s interval; see `AYResource/include/AYHotReloadWatcher.h:57`).
+- **Whole-second mtime polling** via `AYHotReloadWatcher` (default 1.0 s interval; see `AYResource/include/AYResource/HotReloadWatcher.h:57`).
 - **No version stamps** are bumped at runtime — re-instance is purely mtime-driven (per `AYResource/design.md §6.5` quoted verbatim in the audit).
-- **GUID** (per `IAYConverter.h:16` `ayt::math::FGuid guid`) is **content identity** for cache dedup, **not** a reload trigger. No GUIDatabase exists in the engine (audit finding).
+- **GUID** (per `AYResource/IConverter.h:16` `ayt::math::FGuid guid`) is **content identity** for cache dedup, **not** a reload trigger. No GUIDatabase exists in the engine (audit finding).
 - **Handle LRU** via `AYResourceCache::registerHandle` — the strong-cache entry stays until the last `AYResourceHandle<Tilemap>` drops; the watcher path removes the strong entry on mtime change, so the next access creates a brand-new `IAYTilemap` instance.
 - The chunk source subscribes to `ResourceManager::setOnHotReload`; on `.aytilemap` change, the source re-resolves its root resource and re-issues pending requests against the new content.
 
@@ -448,7 +448,7 @@ Concrete lock:
 ### 8.1 `ITileCollisionQuery` interface (Phase 0 shape only)
 
 ```cpp
-// include/AY2D/AYTileCollision.h — Phase 0 interface shape only
+// include/AY2D/TileCollision.h — Phase 0 interface shape only
 namespace ayt::ay2d {
 
 // 2D ray used for tile queries. Phase 1+ may reuse ayt::physics::Ray2D
@@ -667,7 +667,7 @@ The 32×32 finite-tilemap MVP from Phase 2 must hit these numbers on the referen
 
 #### 10.1.1 Profiling counter naming (F-8)
 
-**Audit finding F-8**: the engine has **no global profiler convention**. `AYProfiler` does not exist; there are no `AY_PROFILE_*` / `ScopedTimer` / `ProfileScope` macros; no `AYTelemetry` / `AYCounter` / `AYMetrics` types in `AYFoundation`. Profiling surfaces are **per-module ad-hoc POD structs** (`AYGameLoop/FrameStats.h`, `AYRenderer/AYRenderTypes.h:47-54 RenderFrameStats`, `AYRenderer/AYShadowDiagnostics.h:23-41 ShadowFrameStats`) plus per-instance atomic counters in `AYPhysicsManager.h:77-79` and `EventBus.h:141-148`.
+**Audit finding F-8**: the engine has **no global profiler convention**. `AYProfiler` does not exist; there are no `AY_PROFILE_*` / `ScopedTimer` / `ProfileScope` macros; no `AYTelemetry` / `AYCounter` / `AYMetrics` types in `AYFoundation`. Profiling surfaces are **per-module ad-hoc POD structs** (`AYGameLoop/FrameStats.h`, `AYRenderer/RenderTypes.h:47-54 RenderFrameStats`, `AYRenderer/ShadowDiagnostics.h:23-41 ShadowFrameStats`) plus per-instance atomic counters in `AYPhysics/PhysicsManager.h:77-79` and `AYEventSystem/EventBus.h:141-148`.
 
 AY2D does **not** introduce a global profiler. Instead it adopts the **closest documented convention** — the snake-case `<module>_<metric>_<unit>` shape used in `AY2D/design.md` (this file) and in `AYPhysics/design.md:384` (`queueHighWater`, `queueRejectCount`, `syncQueryWaitUs`):
 
@@ -680,9 +680,9 @@ AY2D does **not** introduce a global profiler. Instead it adopts the **closest d
 | `ay2d_draw2d_items` | `uint32_t` | count | Per-frame `Draw2DItem` count submitted by `RenderSystem2D` |
 | `ay2d_draw2d_pass_us` | `uint64_t` | microseconds | Wall time of `Draw2DPass::execute` |
 
-All counters live on the owning `World2D` / `Tilemap` / `Draw2DPass` instance as `std::atomic<uint64_t>` / `std::atomic<uint32_t>` fields (mirrors `AYPhysics/include/AYPhysicsManager.h:77-79` `_queueHighWater` / `_queueRejectCount`), **not** as TU-static globals. The naming and storage mirror `AYVoxel/design.md:1641-1653` `g_loadedChunkCount` / `g_meshBytes` / `g_drainRejectCount` *only as a precedent*, not as a dependency — AY2D does not link AYVoxel.
+All counters live on the owning `World2D` / `Tilemap` / `Draw2DPass` instance as `std::atomic<uint64_t>` / `std::atomic<uint32_t>` fields (mirrors `AYPhysics/include/AYPhysics/PhysicsManager.h:77-79` `_queueHighWater` / `_queueRejectCount`), **not** as TU-static globals. The naming and storage mirror `AYVoxel/design.md:1641-1653` `g_loadedChunkCount` / `g_meshBytes` / `g_drainRejectCount` *only as a precedent*, not as a dependency — AY2D does not link AYVoxel.
 
-> **Naming inconsistency caveat (F-8 transparency)**: the `ay2d_*` prefix uses snake_case while `AYGameLoop/FrameStats.h` and `AYRenderer/AYRenderTypes.h:47-54` use CamelCase POD struct fields. This is a **module-local** style, not a global convention. A future `AYProfiler` module may unify these; until then AY2D's choice is documented here and not propagated as "the engine convention".
+> **Naming inconsistency caveat (F-8 transparency)**: the `ay2d_*` prefix uses snake_case while `AYGameLoop/FrameStats.h` and `AYRenderer/RenderTypes.h:47-54` use CamelCase POD struct fields. This is a **module-local** style, not a global convention. A future `AYProfiler` module may unify these; until then AY2D's choice is documented here and not propagated as "the engine convention".
 
 ### 10.2 Test categories
 
@@ -711,7 +711,7 @@ Per [AYRenderer/design.md §14](../AYRenderer/design.md):
 | Phase | Goal | Deliverables | Exit gate |
 |---|---|---|---|
 | **Phase 0 — docs (this PR)** | Get everyone to sign off on boundaries. | `AY2D/design.md` chapters §0–§12 + Appendix A; `AYRuntime/AY2D/` directory contains **only** this `design.md`; no submodule added; no CMake entry. | Architecture review sign-off; capability map §E L72-85 wording reconfirmed; **no code merged**. |
-| **Phase 1 — skeleton + first commit** | Empty submodule with header stubs. | Register submodule; minimal `include/AY2D/World2D.h` + `Tilemap.h` + `Sprite.h` + `OrthographicCamera.h`; CMake `add_subdirectory` gated behind `AY_ENABLE_AY2D` (default OFF). | Skeleton compiles in CI; `ENABLE_AY2D=OFF` build remains green; **no bgfx in public headers** (F-5 — see §11.2). |
+| **Phase 1 — skeleton + first commit** | Empty submodule with header stubs. | Register submodule; minimal `include/AY2D/World2D.h` + `AY2D/Tilemap.h` + `AY2D/Sprite.h` + `AY2D/OrthographicCamera.h`; CMake `add_subdirectory` gated behind `AY_ENABLE_AY2D` (default OFF). | Skeleton compiles in CI; `ENABLE_AY2D=OFF` build remains green; **no bgfx in public headers** (F-5 — see §11.2). |
 | **Phase 2 — finite tilemap MVP** | Render a 32×32 finite tilemap with one atlas, no animation. | `.aytilemap` + `.ayatlas` formats (L1); `Tilemap` L2; `TilemapRenderSystem` (Present lane); Phoskia variant `tilemap.phoskia`; `TilemapParallaxDemo`. Load-failure contract: §11.3. | Demo plays in Editor viewport. |
 | **Phase 3 — animation + flip + layers** | Per-tile animation table; sprite flip; layer sort. | Tile-animation runtime; 4 batch states tested. | 1 000 animated tiles ≤ 0.6 ms. |
 | **Phase 4 — streaming** | Infinite / chunked map. | `TilemapChunkSource` interface; budget policy; telemetry. | Chunk IO ≤ budget; deterministic fallback on not-loaded tiles. |
@@ -917,15 +917,15 @@ When this file is updated, append a new section here:
 **Locked changes**:
 - §10.2 + §11.1: AY2D ships its first `unittest/` subtree (mirrors AYPhysics sibling pattern), with AYTest-linked `AY2D_Tests` target. Three stub suites — `Test_TileCoord` / `Test_CollisionFlags` / `Test_TileIdPackMode` — cover the four placeholder public headers plus the §8.1 `CollisionFlags` operator set. No `.cpp` implementation yet; these are compile + invariant tests over the header surface, not functional tests.
 - §3.4: `World2D::resourceEpoch` semantics locked in `Test_TileCoord.cpp` ("`resourceEpoch` bumps only on new `IResource` instance or `addTilemap` / `removeTilemap` / `swapTilemap`").
-- §8.1: `CollisionFlags` (`Empty` vs `None`) and the `operator| / & / ^ / ~` set are now compile-checked and behavior-checked in `Test_CollisionFlags.cpp`. The header `AYTileCollision.h` is added to `include/AY2D/` to materialize the operator set without bumping the design; full `ITileCollisionQuery` interface lands in Phase 5+ per F-12.
+- §8.1: `CollisionFlags` (`Empty` vs `None`) and the `operator| / & / ^ / ~` set are now compile-checked and behavior-checked in `Test_CollisionFlags.cpp`. The header `AY2D/TileCollision.h` is added to `include/AY2D/` to materialize the operator set without bumping the design; full `ITileCollisionQuery` interface lands in Phase 5+ per F-12.
 - §6.1: `TileIdPackMode` enum byte-size lock (`sizeof(TileIdPackMode) == 1`) verified in `Test_TileIdPackMode.cpp`.
-- Umbrella `AY2D.h` is added at the AY2D root. Consumers prefer `#include <AY2D.h>` over direct subdirectory includes; mirrors AYPhysics umbrella pattern (`AYRuntime/AYPhysics/AYPhysics.h`).
+- Umbrella `AY2D.h` is added at the AY2D root. Consumers prefer `#include <AY2D.h>` over direct subdirectory includes; mirrors AYPhysics umbrella pattern (`AYPhysics.h`).
 - Root repository: `option(AY_ENABLE_AY2D ... OFF)` + conditional `add_subdirectory(AYRuntime/AY2D)` (default OFF) lands at the root `CMakeLists.txt`. End-to-end verified on Visual Studio 2026 (MSVC 19.51.36252) + cmake 4.3.1 + Ninja + vcpkg toolchain.
 
 **Open follow-ups**:
 - Phase 2 finite-tilemap MVP — `src/*.cpp` implementations + `.aytilemap` Loader stub + first real `TilemapParallaxDemo`.
 - `RenderPassSlot::Forward2DOpaque` and `DrawItem::payload` cross-module PRs (gated on AYRenderer maintainer per §4.2.1).
-- `IAYTilemap.h` / `IAYTileset.h` cross-module PR (gated on AYResource maintainer per §4.2.1).
+- `AYResource/assetsDefs/ITilemap.h` / `IAYTileset.h` cross-module PR (gated on AYResource maintainer per §4.2.1).
 - `Test_HotReload_Tilemap` (F-11 / F-17) and visual / performance tests (F-7) deferred to Phase 2 alongside `.aytilemap` loader.
 
 ### 13.5 v0.1.3 — 2026-07-29 (Phase 2 finite-tilemap CPU MVP)
@@ -942,9 +942,9 @@ When this file is updated, append a new section here:
     eviction policy **locked to LRU** (Phase 2 default; `Distance` /
     `TimeWindow` arrive with Phase 4 streaming).
 - §6.1 storage width (`TileIdPackMode`) **single source of truth** is
-  `include/AYTileCoord.h`. Both `AYChunkData` and `AYTilemap` now
-  include `AYTileCoord.h` for the enum, avoiding any future ODR risk.
-- §5.1 + §5.2 + §5.3: Header-only `AYTileSamplerUV.h` lands.
+  `include/AY2D/TileCoord.h`. Both `AYChunkData` and `AYTilemap` now
+  include `AY2D/TileCoord.h` for the enum, avoiding any future ODR risk.
+- §5.1 + §5.2 + §5.3: Header-only `AY2D/TileSamplerUV.h` lands.
   - `tileUV(tileId, AtlasDesc)` returns the half-texel-center UV
     rect with gutter extrusion.
   - `isValidAtlasDesc(desc)` locks `gutter < min(tileWidth,
@@ -958,7 +958,7 @@ When this file is updated, append a new section here:
 - §6.2 `ITilemapChunkSource` interface + `AYChunkData` payload structure
   now live in AY2D-internal headers (no cross-module PR required).
   Production chunks still arrive via Phase 3+ cross-module PR
-  (per §4.2.1: AYResource maintainer owns `IAYTilemap.h`).
+  (per §4.2.1: AYResource maintainer owns `AYResource/assetsDefs/ITilemap.h`).
 - CMakeLists: `add_library(AY2D INTERFACE)` is **flipped to STATIC**
   with two real .cpp files. This is the visible signal that Phase 0
   / Phase 1+ docs-only exit closed and Phase 2 CPU MVP opened.
@@ -1018,7 +1018,7 @@ When this file is updated, append a new section here:
   past `kMaxIndex = 0x00FFFFFF`. The underlying id layout is
   unchanged on the wire (still a single uint32_t) so the
   `cancelChunk` / `tryGetChunk` API surface is preserved.
-- §10.1.1: `Ay2DCounters` POD lands as `include/AY2DCounters.h`.
+- §10.1.1: `Ay2DCounters` POD lands as `include/AY2D/2DCounters.h`.
   Six atomic fields (`chunk_io_us` / `chunk_io_bytes` /
   `chunk_resident_count` / `atlas_bytes` / `draw2d_items` /
   `draw2d_pass_us`) with `snapshot()` / `resetAll()` /
@@ -1051,7 +1051,7 @@ When this file is updated, append a new section here:
     resident count / chunk-source eviction / accessor identity.
   Existing tests (Phase 2 + Phase 1+ stubs) untouched.
 - §13.6: This changelog entry.
-- `AY2D.h` umbrella now also includes `AY2DCounters.h`.
+- `AY2D.h` umbrella now also includes `AY2D/2DCounters.h`.
 
 **Open follow-ups**:
 - `.aytilemap` binary format + IAYTilemap cross-module PR (still
@@ -1116,9 +1116,9 @@ When this file is updated, append a new section here:
   Existing tests (Phase 1+ stubs + Phase 2 functional + Phase 3A
   real-impl) untouched. New total: **12 TEST_SUITE / 88 TEST_CASE /
   288 CHECK assertions PASS**.
-- §2.3: `AYTileAnimation.h` is the new in-AY2D header;
+- §2.3: `AY2D/TileAnimation.h` is the new in-AY2D header;
   `src/AYTilemapAnimation.cpp` is the new .cpp. **No new module deps**
-  — AYMath was already linked (Phase 3A `AYOrthographicCamera.h`); the
+  — AYMath was already linked (Phase 3A `AY2D/OrthographicCamera.h`); the
   animation tick uses raw `int64_t` microseconds (no `ayt::time::TimePoint`
   in the public API surface — consumers can wrap `Clock::gameNow()` if
   they want, the implementation stays AYTime-free). **R-10 lock holds**:
@@ -1388,7 +1388,7 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
   that grew storage bumps it once to `cols*rows`.
 - **R-3D.5** empty grid: all batch ops no-op on unsized tilemap
   (mirrors `setTile`).
-- **R-3D.6** bgfx-leak guard: `AYTileRect.h` is std::* + TileCoord
+- **R-3D.6** bgfx-leak guard: `AY2D/TileRect.h` is std::* + TileCoord
   only; no new module deps. `TilemapBatch.cpp` adds no new bgfx
   includes.
 - **R-3D.7** `src/AYTilemapBatch.cpp` is the only new .cpp;
@@ -1413,7 +1413,7 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
   `defaultTileId` per Phase 2 §6.3
   (`UntouchedCellReadsDefaultTileId` invariant).
 - §15.1: new public type `TileRect` ships in
-  `include/AYTileRect.h` (POD 16 bytes, half-open `[x0, x1)` x
+  `include/AY2D/TileRect.h` (POD 16 bytes, half-open `[x0, x1)` x
   `[y0, y1)` semantics). Free helpers `isEmpty`, `area`,
   `clampToGrid`.
 - §15.4: batch counters = one mutation per batch operation.
@@ -1422,7 +1422,7 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
   not subsequently. Out-of-range / mode-mismatch / empty-rect
   paths produce NO delta (same discipline as §14.2).
 - §15.6: bgfx-leak guard verified green at 12 → 13 public
-  headers. New file `AYTileRect.h` includes only std::* +
+  headers. New file `AY2D/TileRect.h` includes only std::* +
   `TileRect` types — no bgfx, no bx, no `AYMath`.
 - §13.9: This changelog entry. Front-matter bumped to v0.1.7.
 
@@ -1444,11 +1444,11 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
 **Phase**: 3E (in-AY2D scope only — coordinate math layer, no cross-module PRs)
 
 **Locked changes**:
-- §3 + §16: new in-AY2D header `include/AYTileMath.h` ships the
+- §3 + §16: new in-AY2D header `include/AY2D/TileMath.h` ships the
   world↔cell vocabulary previously missing from the submodule.
   Symbols are free functions / free helpers, never member methods
   on `Tilemap` (so `TileCoord` / `TileRect` stay context-free).
-  The header includes only `AYTileCoord.h`, `AYTileRect.h`, and
+  The header includes only `AY2D/TileCoord.h`, `AY2D/TileRect.h`, and
   `AYMath/MathTypes.h` (already-public AYMath — Phase 3A PUBLIC
   link). No new module dependency. No bgfx.
   - `worldToCell(ayt::math::FVector2 world, ayt::math::FVector2 cellOrigin, float cellSizeW, float cellSizeH) noexcept -> TileCoord`
@@ -1488,7 +1488,7 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
   clamp.
 - §10.2: bgfx-leak guard stays green. New headers include only
   `<cstdint>`, `AYMath/MathTypes.h` (PUBLIC link), and the
-  existing in-AY2D `AYTileCoord.h` + `AYTileRect.h`. No `bgfx::*`,
+  existing in-AY2D `AY2D/TileCoord.h` + `AY2D/TileRect.h`. No `bgfx::*`,
   no `bx::*`, no third-party module.
 - §13.10: This changelog entry. Front-matter bumped to v0.1.8.
   Total tests: **15 TEST_SUITE / 114 TEST_CASE / 446 CHECK assertions
@@ -1543,7 +1543,7 @@ write behavior. Subsequent batches leave `tiles_resident` alone.
 
 All four cell-coord helpers are `[[nodiscard]] noexcept` free
 functions. The three tilemap overloads are member methods on
-`Tilemap` (declared inline in `AYTilemap.h`); existing
+`Tilemap` (declared inline in `AY2D/Tilemap.h`); existing
 cell-coord signatures are untouched.
 
 ### 16.2 Semantics (locked)
@@ -1578,12 +1578,12 @@ cell-coord signatures are untouched.
 ### 16.3 Tile method overloads (locked)
 
 The three tilemap world-coord overloads are tiny forwarding
-methods declared inline in `AYTilemap.h`. They do NOT cache any
+methods declared inline in `AY2D/Tilemap.h`. They do NOT cache any
 new state on `Tilemap` (per-cell write paths still route through
 the existing cell-coord logic).
 
 ```cpp
-// include/AYTilemap.h (P3E additions, inline)
+// include/AY2D/Tilemap.h (P3E additions, inline)
 
 void setTile(ayt::math::FVector2 world, uint32_t tileId) noexcept {
     const TileCoord c = worldToCell(
@@ -1614,7 +1614,7 @@ The free-function overload of `setTileRange` in
 + delegates to the cell-coord `setTileRange`. Signatures:
 
 ```cpp
-// include/AYTilemap.h (P3E add to namespace ayt::ay2d)
+// include/AY2D/Tilemap.h (P3E add to namespace ayt::ay2d)
 [[nodiscard]] bool setTileRange(Tilemap& t,
                                 ayt::math::FVector2 worldMin,
                                 ayt::math::FVector2 worldMax,
@@ -1673,7 +1673,7 @@ The free-function overload of `setTileRange` in
   convention (both axes round toward `-infinity`).
 - **R-3E.2** OOB handling: the helper deliberately does NOT
   clamp to `[0, cols)`. `setTile` and `getTile` already own
-  the negative-drop contract (`AYTilemap.h:87` `cell.x < 0`).
+  the negative-drop contract (`AY2D/Tilemap.h:87` `cell.x < 0`).
   Tests lock this in case-7.
 - **R-3E.5** cell-center vs cell-corner: editor paint uses
   the center to avoid picking the wrong cell when the user
@@ -1688,9 +1688,9 @@ The free-function overload of `setTileRange` in
   always have non-zero `tileWidth`/`tileHeight` (size-0 grid
   is also a write no-op at the `setTile` boundary), so this
   is a defensive guard, not a hot path.
-- **R-3E.7** bgfx-leak guard stays green. `AYTileMath.h`
+- **R-3E.7** bgfx-leak guard stays green. `AY2D/TileMath.h`
   includes only `<cstdint>`, `AYMath/MathTypes.h`, the
-  in-AY2D `AYTileCoord.h` + `AYTileRect.h` — confirmed by
+  in-AY2D `AY2D/TileCoord.h` + `AY2D/TileRect.h` — confirmed by
   build-time `ay2d_check_no_bgfx_in_public_headers` target.
 - **R-3E.8** deterministic across machines: all four helpers
   are pure fp arithmetic; no atomics, no locks, no IO. Same
@@ -1717,7 +1717,7 @@ no cross-module PRs)
   into `DrawItem::payload` then. Today: the helper builds
   `std::vector<SpriteDrawCmd>` sorted by `packedSortKey()`, with
   off-screen sprites removed via AABB-vs-camera intersection.
-- §17.1: `SpriteDrawCmd` POD in `include/AYSpriteDrawCmd.h`.
+- §17.1: `SpriteDrawCmd` POD in `include/AY2D/SpriteDrawCmd.h`.
   Fields (all in-AY2D types — no AYRenderer include):
   - `uint32_t` `packedSortKey` — mirrors `Sprite::packedSortKey()`.
   - `ayt::math::Float3x3` `worldMatrix` — copied through from
@@ -1737,7 +1737,7 @@ no cross-module PRs)
   when `std::vector::reserve(sprites.size())` is honored.
 - §17.2: `WorldAabb()` free helper computes the camera's world-
   space AABB from `OrthographicCamera`. Lives in
-  `include/AYWorldAabb.h` as a thin wrapper around the existing
+  `include/AY2D/WorldAabb.h` as a thin wrapper around the existing
   `viewMatrix()` + `projectionMatrix()` math (no AYMath
   surface-area extension; `ayt::math::FRectangle` already
   ships in `AYMath/MathTypes.h:1092`). When `viewSize <= 0` or
@@ -1783,9 +1783,9 @@ no cross-module PRs)
   algorithm as the production path so the test does not
   silently diverge. Every cull path asserts both the
   `out.size()` AND the `out[i].packedSortKey` sequence.
-- §11.2: bgfx-leak guard stays green. `AYSpriteDrawCmd.h` and
-  `AYWorldAabb.h` include only `<cstdint>`, `AYMath/MathTypes.h`
-  (PUBLIC), and in-AY2D `AYSprite.h` + `AYOrthographicCamera.h`.
+- §11.2: bgfx-leak guard stays green. `AY2D/SpriteDrawCmd.h` and
+  `AY2D/WorldAabb.h` include only `<cstdint>`, `AYMath/MathTypes.h`
+  (PUBLIC), and in-AY2D `AY2D/Sprite.h` + `AY2D/OrthographicCamera.h`.
   No `<bgfx/*.h>`, no `<bx/*.h>`. Confirmed by build-time
   `ay2d_check_no_bgfx_in_public_headers` target.
 - §13.11: This changelog entry. Front-matter bumped to v0.1.9.
@@ -1827,16 +1827,16 @@ no cross-module PRs)
 
 | Symbol | Returns | Purpose |
 |---|---|---|
-| `SpriteDrawCmd` (POD, in `AYSpriteDrawCmd.h`) | struct | Output record of the helper. Self-contained, no AYRenderer dep (R-3F.1). |
-| `WorldAabb(camera) -> ayt::math::FRectangle` (in `AYWorldAabb.h`) | FRectangle | Camera's world-space AABB; empty when camera is degenerate (R-3F.2). |
+| `SpriteDrawCmd` (POD, in `AY2D/SpriteDrawCmd.h`) | struct | Output record of the helper. Self-contained, no AYRenderer dep (R-3F.1). |
+| `WorldAabb(camera) -> ayt::math::FRectangle` (in `AY2D/WorldAabb.h`) | FRectangle | Camera's world-space AABB; empty when camera is degenerate (R-3F.2). |
 | `buildSpriteScene(const std::vector<Sprite>&, const OrthographicCamera&, std::vector<SpriteDrawCmd>&) -> void` (in `src/AYSpriteCulling.cpp`) | void | AABB pre-cull + layer-mask cull + stable sort + emit. |
 | `spriteAabbOf(s) -> ayt::math::FRectangle` (in `src/AYSpriteCulling.cpp`, internal) | FRectangle | Per-sprite world AABB derived from `worldMatrix` translation; ±0.5 unit at default scale (R-3F.4). |
 | `isSpriteInCamera(s, cameraRect, layerMask) -> bool` (in `src/AYSpriteCulling.cpp`, internal) | bool | Combined AABB + layer-mask gate; unit-tested via `buildSpriteScene` (R-3F.3 / R-3F.5). |
 
 ### 17.2 Semantics (locked)
 
-- **R-3F.1 — no AYRenderer include**: `AYSpriteDrawCmd.h` is
-  pure-AYMath + `AYSprite.h`. The helper never reaches for
+- **R-3F.1 — no AYRenderer include**: `AY2D/SpriteDrawCmd.h` is
+  pure-AYMath + `AY2D/Sprite.h`. The helper never reaches for
   `DrawItem`, `MaterialHandle`, or `RenderPassSlot`. The
   future cross-module PR does the translation.
 - **R-3F.2 — degenerate camera → all sprites culled**: when
@@ -1874,11 +1874,11 @@ no cross-module PRs)
 ### 17.3 SpriteDrawCmd layout
 
 ```cpp
-// include/AYSpriteDrawCmd.h — Phase 3F
+// include/AY2D/SpriteDrawCmd.h — Phase 3F
 #pragma once
 #include <cstdint>
 #include "AYMath/MathTypes.h"
-#include "AYSprite.h"  // For SpriteFlip; render-side can read the
+#include "AY2D/Sprite.h"  // For SpriteFlip; render-side can read the
                        //   enum value through the `flip` field on
                        //   this struct without re-including the
                        //   sprite header (this header transitively
@@ -1916,11 +1916,11 @@ assumes `zoom == 1.0` for the world AABB — the §5.3
 case).
 
 ```cpp
-// include/AYWorldAabb.h — Phase 3F
+// include/AY2D/WorldAabb.h — Phase 3F
 #pragma once
 #include <cstdint>
 #include "AYMath/MathTypes.h"  // FVector2 + FRectangle
-#include "AYOrthographicCamera.h"
+#include "AY2D/OrthographicCamera.h"
 namespace ayt::ay2d {
 
 [[nodiscard]] inline ayt::math::FRectangle WorldAabb(
@@ -2023,7 +2023,7 @@ LRU `setCapacity` runtime control, no cross-module PRs)
 
 **Locked changes**:
 - §6.2 + §18: `TilemapBudget` shape (already shipped in
-  `AYTilemapChunkSource.h` since Phase 2) is now **runtime
+  `AY2D/TilemapChunkSource.h` since Phase 2) is now **runtime
   wired** onto `InMemoryTilemapChunkSource`:
   - `setCapacity(uint32_t)` / `setMaxIoBytesPerSec(uint64_t)` —
     mutator paths previously only available via the ctor.
@@ -2058,7 +2058,7 @@ LRU `setCapacity` runtime control, no cross-module PRs)
     The gate doesn't need a bytes-per-request argument today
     because the rate limit is the *only* gate consuming bytes.
 - §18.3: `EvictionPolicy` enum stays where it is (in
-  `AYTilemapChunkSource.h`). P3G does NOT change its meaning.
+  `AY2D/TilemapChunkSource.h`). P3G does NOT change its meaning.
   The LRU policy has been the live wire since Phase 3A
   (§13.6) — `InMemoryTilemapChunkSource::evictIfNeeded` is
   the implementation. `Distance` and `TimeWindow` are
@@ -2170,13 +2170,13 @@ LRU `setCapacity` runtime control, no cross-module PRs)
   > are **retained**. Full text in §13.20.
 - **C8 / `TileCoord` deviation**: noted that the shipped
   `ITileCollisionQuery` interface uses `TileCoord` (consistent
-  with all AY2D code per `AYTileCoord.h:5-14` deliberate refusal
+  with all AY2D code per `AY2D/TileCoord.h:5-14` deliberate refusal
   of `IVector2`) instead of `IVector2` per the §8.1 doc text.
   §16.4 permits int↔int conversion; the deviation is documented
   but not a breaking change. The §8.1 doc block stays as-is; the
   shipped header uses `TileCoord`.
 - **C5 / `TilemapBinding` deprecation**: P3H.2 slice will mark
-  `TilemapBinding` (`include/AY2D/AYWorld2D.h:44-48`) deprecated
+  `TilemapBinding` (`include/AY2D/World2D.h:44-48`) deprecated
   in favor of `TilemapEntryView` (new type, P3H.2 ship).
   `TilemapBinding` is dead code today (grep across
   `include src unittest design.md` returns no consumer) and
@@ -2210,7 +2210,7 @@ no resolver, no cross-module PRs)
 
 **Locked changes** (per §13.PF pre-flight retractions applied as code):
 
-- §8.1 (C7): `include/AY2D/AYTileCollision.h` expanded from 53 lines
+- §8.1 (C7): `include/AY2D/TileCollision.h` expanded from 53 lines
   (Phase 0 placeholder) to the full §8.1 type set:
   - `Ray2D { origin, direction, tMin, pointAt(t) }` — `pointAt`
     out-of-line in `src/AYTileCollision.cpp` (kept out-of-line for
@@ -2230,7 +2230,7 @@ no resolver, no cross-module PRs)
   `flagsAt(c) & mask != Empty` was always true (`x & mask`
   cannot equal `Empty` when `Empty` is not in `mask`). Phase 5
   ships the corrected form as the in-class default.
-- §11 Phase 5 row exit gate: `include/AY2D/AYTilemapCollisionAdapter.h`
+- §11 Phase 5 row exit gate: `include/AY2D/TilemapCollisionAdapter.h`
   + `src/AYTilemapCollisionAdapter.cpp` implement the only
   in-AY2D concrete `ITileCollisionQuery`. `flagsAt` delegates to
   `Tilemap::flagsAtRaw`. `raycast` is the §11 placeholder
@@ -2239,11 +2239,11 @@ no resolver, no cross-module PRs)
   AYPhysics maintainer).
 - §13.PF (C8 / `TileCoord` deviation): the shipped interface
   uses `TileCoord` (consistent with all AY2D code per
-  `AYTileCoord.h:5-14` deliberate refusal of `IVector2`) instead
+  `AY2D/TileCoord.h:5-14` deliberate refusal of `IVector2`) instead
   of `IVector2` per the §8.1 doc text. §16.4 permits int↔int
   equivalence; the deviation is logged but is not a breaking
   change.
-- `include/AY2D.h` umbrella adds `AYTilemapCollisionAdapter.h`.
+- `include/AY2D.h` umbrella adds `AY2D/TilemapCollisionAdapter.h`.
 - `CMakeLists.txt` adds 2 new `.cpp` to `SRC_FILES`
   (`AYTileCollision.cpp` + `AYTilemapCollisionAdapter.cpp`).
 - `unittest/CMakeLists.txt` adds `Test_TileCollisionQuery.cpp`.
@@ -2277,9 +2277,9 @@ budget) untouched.
 - §11.2: bgfx-leak guard stays green. New public symbols
   (`Ray2D` / `RaycastHit2D` / `ITileCollisionQuery` /
   `TilemapCollisionQueryAdapter`) are exposed through
-  `AYTileCollision.h` + `AYTilemapCollisionAdapter.h`. Both
+  `AY2D/TileCollision.h` + `AY2D/TilemapCollisionAdapter.h`. Both
   headers include only `<cstdint>` + `AYMath/MathTypes.h` +
-  `AYTileCoord.h` — zero bgfx paths.
+  `AY2D/TileCoord.h` — zero bgfx paths.
 - §13.13: This changelog entry. Front-matter bumped to v0.1.11.
   Total tests: **18 TEST_SUITE / 538 CHECK assertions PASS** (was
   17 / 516 at v0.1.10; +1 suite, +22 CHECK).
@@ -2314,7 +2314,7 @@ POD-ish).
 
 **Locked changes** (per §13.PF C5 reshape):
 
-- §3 / §13.PF C5: `include/AY2D/AYWorld2DSnapshot.h` ships
+- §3 / §13.PF C5: `include/AY2D/World2DSnapshot.h` ships
   `TilemapEntryView` (POD: `TilemapHandle handle; uint32_t
   layer; uint32_t sortingKey`) — **no `resource` field** because
   `World2D::Entry::resource` is always `nullptr` at HEAD (the
@@ -2326,12 +2326,12 @@ POD-ish).
   `World2DSnapshot::build(const World2D&)` — copies
   `entries` (as `TilemapEntryView`s) and `counters.snapshot()`
   (relaxed atomic load per §10.1.1 + F-8).
-- §13.PF C5: `TilemapBinding` (`include/AY2D/AYWorld2D.h:44-48`)
+- §13.PF C5: `TilemapBinding` (`include/AY2D/World2D.h:44-48`)
   is **deprecated** via `[[deprecated("... use TilemapEntryView
   via World2DSnapshot")]]`. The type stays present for additive
   compatibility; a future PR may remove it once grep confirms
   zero consumers (none exist today).
-- `include/AY2D.h` umbrella adds `AYWorld2DSnapshot.h`.
+- `include/AY2D.h` umbrella adds `AY2D/World2DSnapshot.h`.
 - `CMakeLists.txt` adds `src/AYWorld2DSnapshot.cpp` to `SRC_FILES`.
 - `unittest/CMakeLists.txt` adds `Test_World2DSnapshot.cpp`.
 
@@ -2358,9 +2358,9 @@ deprecation path so a future PR that removes the attribute is
 caught at CI. The build keeps `/wd4200` only — C4996 is a
 warning, not an error, so the deprecated type stays usable.
 
-- §11.2: bgfx-leak guard stays green. `AYWorld2DSnapshot.h`
-  includes `<cstdint>` + `<vector>` + `AY2DCounters.h` +
-  `AYWorld2D.h` — all bgfx-clean.
+- §11.2: bgfx-leak guard stays green. `AY2D/World2DSnapshot.h`
+  includes `<cstdint>` + `<vector>` + `AY2D/2DCounters.h` +
+  `AY2D/World2D.h` — all bgfx-clean.
 - §13.14: This changelog entry. Front-matter bumped to v0.1.12.
   Total tests: **19 TEST_SUITE / 559 CHECK assertions PASS** (was
   18 / 538 at v0.1.11; +1 suite, +21 CHECK).
@@ -2591,7 +2591,7 @@ no new UV derivation logic; reuses `AYTileSamplerUV::tileUV`).
 
 **Locked changes** (per §13.PF C4 reshape):
 
-- §3 / §5.5: `include/AY2D/AYSpriteSheet.h` ships `SpriteSheet`
+- §3 / §5.5: `include/AY2D/SpriteSheet.h` ships `SpriteSheet`
   as a thin wrapper: `{ AtlasDesc atlas; std::string
   texturePath; FRectangle uvRect(uint32_t tileId) const; }`.
   Header-only struct. No new UV math; `uvRect` delegates to
@@ -2601,7 +2601,7 @@ no new UV derivation logic; reuses `AYTileSamplerUV::tileUV`).
 - L-3 lock: no `bgfx::TextureHandle`. Only an opaque path
   string. The cross-module PR resolves the path into a real
   handle via AYResource's `.ayatlas` loader.
-- `include/AY2D.h` umbrella adds `AYSpriteSheet.h`.
+- `include/AY2D.h` umbrella adds `AY2D/SpriteSheet.h`.
 - `unittest/CMakeLists.txt` adds `Test_SpriteSheet.cpp`.
 
 **Tests** (`unittest/Test_SpriteSheet.cpp` — 2 cases / ~80 CHECK):
@@ -2621,9 +2621,9 @@ no new UV derivation logic; reuses `AYTileSamplerUV::tileUV`).
 All existing tests (Phase 1+ + Phase 2 + Phase 3A/B/C/D/E/F/G
 + Phase 5 + P3H.2 + P3G.2a + P3G.1 partial + P3D.2) untouched.
 
-- §11.2: bgfx-leak guard stays green. `AYSpriteSheet.h`
+- §11.2: bgfx-leak guard stays green. `AY2D/SpriteSheet.h`
   includes `<cstdint>` + `<string>` + `AYMath/MathTypes.h` +
-  `AYAtlasDesc.h` + `AYTileSamplerUV.h` — all bgfx-clean.
+  `AY2D/AtlasDesc.h` + `AY2D/TileSamplerUV.h` — all bgfx-clean.
 - §13.18: This changelog entry. Front-matter bumped to v0.1.16.
   Total tests: **23 TEST_SUITE / 841 CHECK assertions PASS** (was
   22 / 769 at v0.1.15; +1 suite, +72 CHECK).
@@ -2656,13 +2656,13 @@ P3H.2's eager `World2DSnapshot::build`).
   §4.2.1) and exposing `IAYTilemap*` would hand out a
   dangling pointer to an incomplete type.
 - §13.PF C9: `TilemapEntryView` was MOVED from
-  `AYWorld2DSnapshot.h` to `AYWorld2D.h`. The struct is
+  `AY2D/World2DSnapshot.h` to `AY2D/World2D.h`. The struct is
   still POD-equivalent (handle + layer + sortingKey), but
   the new location avoids a circular include
-  (`AYWorld2D.h -> AYWorld2DSnapshot.h -> AYWorld2D.h`)
+  (`AY2D/World2D.h -> AY2D/World2DSnapshot.h -> AY2D/World2D.h`)
   that would otherwise prevent the header-inline template
-  from compiling. `AYWorld2DSnapshot.h` re-exports the
-  type via its `AYWorld2D.h` include; no duplicate
+  from compiling. `AY2D/World2DSnapshot.h` re-exports the
+  type via its `AY2D/World2D.h` include; no duplicate
   definition.
 - §3: the visitor signature is `void(const TilemapEntryView&)`
   so callers can `f(...)` lambdas / function objects
@@ -2961,10 +2961,10 @@ PASS** (was 25 / 877 at v0.1.18; +1 suite, +26 CHECK).
 
 **Files modified**:
 
-- `include/AYTilemapChunkSource.h` (+2 lines: pure virtual
+- `include/AY2D/TilemapChunkSource.h` (+2 lines: pure virtual
   `purgeChunks`; `+1` override decl; `+1` private
   `cancelAllPending` decl)
-- `include/AYWorld2D.h` (+1 field in `Entry`;
+- `include/AY2D/World2D.h` (+1 field in `Entry`;
   `+1` 3-arg `addTilemap` overload; `+1` private
   `findEntryByHandle`)
 - `src/AYInMemoryTilemapChunkSource.cpp` (+~30 lines:
@@ -3020,7 +3020,7 @@ identical).
 sees why this slice did not add a setter/getter):
 
 - The pre-P3I.3 `OrthographicCamera` exposes `layerMask`
-  as a public field (design.md §3.2, `AYOrthographicCamera.h:81`),
+  as a public field (design.md §3.2, `AY2D/OrthographicCamera.h:81`),
   already round-trippable via direct assignment — there
   is **no setter/getter API to add** that would change
   observable behavior. The original A-2 list entry
@@ -3113,7 +3113,7 @@ flat for the cross-module consumer (a future
   `LayerMaskDefaultIsAllOnes`; no other change in the
   file).
 
-**Files NOT touched**: `include/AYOrthographicCamera.h`,
+**Files NOT touched**: `include/AY2D/OrthographicCamera.h`,
 `src/AYOrthographicCamera.cpp` (none), `CMakeLists.txt`
 (test file already registered), `design.md §3.2`
 (predicate body unchanged), root `CMakeLists.txt` /
@@ -3261,7 +3261,7 @@ environment-passing PR per the do_cmake.bat
 
 **Files modified**:
 
-- `include/AYWorld2DSnapshot.h` (+~70 lines: 1 new
+- `include/AY2D/World2DSnapshot.h` (+~70 lines: 1 new
   field, 1 new method decl, the
   `World2DSnapshotDiff` POD moved before
   `World2DSnapshot` so the return type is complete at
@@ -3335,7 +3335,7 @@ root-bump commit).
 | `InMemoryTilemapChunkSource::budget()` | `TilemapBudget` | Read current budget (the budget struct includes all four fields for forward-compat). |
 | `evictionPolicyActive() const` | `EvictionPolicy` | Returns the live policy (always LRU in P3G; Phase 4 PR overrides). |
 
-`TilemapBudget` (already in `AYTilemapChunkSource.h:367`) is
+`TilemapBudget` (already in `AY2D/TilemapChunkSource.h:367`) is
 **unchanged** in shape — P3G just wires its LRU half. The full
 field set:
 
@@ -3619,7 +3619,7 @@ update is preserved.
 - `unittest/Test_ChunkSourceEraseByKey.cpp` (NEW) — 3
   cases / ~10 CHECK.
 
-**NOT touched**: header `AYInMemoryTilemapChunkSource.h`
+**NOT touched**: header `AY2D/InMemoryTilemapChunkSource.h`
 (public surface unchanged), `Tilemap` / `World2D` /
 `ITilemapChunkSource` (no impact), bgfx-leak guard (pure
 counter change), root `CMakeLists.txt` / `.gitmodules`.
@@ -3673,7 +3673,7 @@ counter change), root `CMakeLists.txt` / `.gitmodules`.
 
 **Type**: test-only + 1 comment-only header fixup (no
 surface change to the POD itself). The POD
-`SpriteDrawCmd` (defined in `include/AYSpriteDrawCmd.h`,
+`SpriteDrawCmd` (defined in `include/AY2D/SpriteDrawCmd.h`,
 shipped Phase 3F v0.1.9) has a manual layout comment
 listing its **88 B** shape. That shape was wrong.
 
@@ -3694,7 +3694,7 @@ same MSVC alignment surprise on `SpriteSheet`'s
 
 **Action**:
 
-- `include/AYSpriteDrawCmd.h` — layout comment updated
+- `include/AY2D/SpriteDrawCmd.h` — layout comment updated
   to 112 B / align 16 / explicit field offsets (still a
   comment; the struct body is unchanged).
 - `unittest/Test_SpriteDrawCmdLayout.cpp` (NEW) — locks
@@ -3763,7 +3763,7 @@ P3H.1 踩坑 #33 documented the workaround for
 `SpriteSheet`; `SpriteDrawCmd` does not need it.
 
 **Files modified**:
-- `include/AYSpriteDrawCmd.h` — layout comment updated
+- `include/AY2D/SpriteDrawCmd.h` — layout comment updated
   from 88 B / 9-float matrix to 112 B / explicit offset
   table. Struct body unchanged.
 - `unittest/Test_SpriteDrawCmdLayout.cpp` (NEW) — 7
@@ -3844,7 +3844,7 @@ those to a dedicated `Test_AtlasDescValidator` suite.
   cases / ~22 CHECK.
 - `unittest/CMakeLists.txt` — `+1` line.
 
-**NOT touched**: `include/AYAtlasDesc.h` (zero surface
+**NOT touched**: `include/AY2D/AtlasDesc.h` (zero surface
 change — `isValidAtlasDesc` body unchanged), `src/`,
 root `CMakeLists.txt`, `.gitmodules`.
 
@@ -3917,8 +3917,8 @@ extent unchanged after the tick.
   reuses the existing `TilemapAnimationSuite`).
 
 **NOT touched**: `src/AYTilemapAnimation.cpp` (zero
-surface change), `include/AYTileAnimation.h`,
-`include/AYTilemap.h` (the existing
+surface change), `include/AY2D/TileAnimation.h`,
+`include/AY2D/Tilemap.h` (the existing
 `hasBeenTicked` flag is the gate; no new state).
 
 **Test cases** (appended to existing
@@ -3976,7 +3976,7 @@ surface change), `include/AYTileAnimation.h`,
 ### 13.29 P3J.5 — A-12: `EvictionPolicy` enum reserved values (v0.1.26)
 
 **Type**: test-only (no surface change). The
-`EvictionPolicy` enum (`include/AYTilemapBudget.h`) ships
+`EvictionPolicy` enum (`include/AY2D/TilemapBudget.h`) ships
 with three values (`LRU = 0`, `Distance = 1`,
 `TimeWindow = 2`), backed by `uint8_t` (256 distinct
 codes available). Phase 4 streaming PR (R-3G.1) will
@@ -3996,7 +3996,7 @@ wired policy.
   cases / ~10 CHECK.
 - `unittest/CMakeLists.txt` — `+1` line.
 
-**NOT touched**: `include/AYTilemapBudget.h`,
+**NOT touched**: `include/AY2D/TilemapBudget.h`,
 `src/`, root `CMakeLists.txt`.
 
 **Test cases** (`Test_EvictionPolicyEnum`, suite
@@ -4050,7 +4050,7 @@ wired policy.
 ### 13.30 P3J.6 — A-7: `TileLoadState` enum coverage (v0.1.27)
 
 **Type**: test-only (no surface change). The
-`TileLoadState` enum (`include/AYTileLoadState.h`,
+`TileLoadState` enum (`include/AY2D/TileLoadState.h`,
 shipped Phase 2 F-18) has 4 values (`Unloaded = 0`,
 `Loading = 1`, `Loaded = 2`, `Failed = 3`) backed by
 `uint8_t`. The enum is consumed by ECS inspectors +
@@ -4068,7 +4068,7 @@ expansion).
   cases / ~10 CHECK.
 - `unittest/CMakeLists.txt` — `+1` line.
 
-**NOT touched**: `include/AYTileLoadState.h` (zero
+**NOT touched**: `include/AY2D/TileLoadState.h` (zero
 surface change), `src/`, root `CMakeLists.txt`.
 
 **Test cases** (`Test_TileLoadStateEnum`, suite
@@ -4111,7 +4111,7 @@ surface change), `src/`, root `CMakeLists.txt`.
 
 **Type**: test-only (no surface change). The
 `ChunkRequestHandle` packs 24-bit index + 8-bit
-generation (include/AYChunkRequestHandle.h, Phase 3).
+generation (include/AY2D/ChunkRequestHandle.h, Phase 3).
 The existing 10-case `Test_ChunkRequestHandle` suite
 covers pack/unpack, ABA guard, masking, but does not
 lock **wrap-around semantics** at the boundaries:
@@ -4125,7 +4125,7 @@ existing suite (does not bump suite count).
 - `unittest/Test_ChunkRequestHandle.cpp` — append 4
   cases / ~14 CHECK.
 
-**NOT touched**: `include/AYChunkRequestHandle.h` (zero
+**NOT touched**: `include/AY2D/ChunkRequestHandle.h` (zero
 surface change — wrap is implicit in the `& kMask`
 discipline already documented), `src/`,
 root `CMakeLists.txt`.
@@ -4176,7 +4176,7 @@ root `CMakeLists.txt`.
 ### 13.32 P3J.8 — A-8: Sprite batch-state coverage (v0.1.29)
 
 **Type**: test-only (no surface change). The `Sprite`
-struct (include/AYSprite.h, Phase 3B) is the input to
+struct (include/AY2D/Sprite.h, Phase 3B) is the input to
 `buildSpriteScene` (Phase 3F). The existing
 `Test_Sprite` suite (8 cases) covers single-sprite
 defaults, packedSortKey composition, flip bits, color
@@ -4194,8 +4194,8 @@ promotes those batch-state checks to the existing
 - `unittest/Test_Sprite.cpp` — append 6 cases / ~26
   CHECK.
 
-**NOT touched**: `include/AYSprite.h`,
-`include/AYSpriteCulling.h`, `src/AYSpriteCulling.cpp`,
+**NOT touched**: `include/AY2D/Sprite.h`,
+`include/AY2D/SpriteCulling.h`, `src/AYSpriteCulling.cpp`,
 root `CMakeLists.txt`. The batch-state tests are
 purely about the existing `Sprite` struct + a
 `std::stable_sort` over a `std::vector<Sprite>` — no
@@ -4271,7 +4271,7 @@ instead of a new entry.
 **Surface** (new method, header-only doc):
 
 ```cpp
-// include/AYInMemoryTilemapChunkSource.h
+// include/AY2D/InMemoryTilemapChunkSource.h
 [[nodiscard]] std::vector<ChunkRequestHandle>
     requestChunkRow(ChunkCoord::value_type y,
                     ChunkCoord::value_type xStart,
@@ -4302,7 +4302,7 @@ require backend-level IO batching which lands in the
 Phase 4 cross-module PR to AYResource).
 
 **Files modified**:
-- `include/AYInMemoryTilemapChunkSource.h` —
+- `include/AY2D/InMemoryTilemapChunkSource.h` —
   `+~12` lines (method declaration + 14-line doc
   block).
 - `src/AYInMemoryTilemapChunkSource.cpp` —
@@ -4417,9 +4417,9 @@ consumer side cross-module (§4.2.1 to AYPhysics maintainer).
   `TilemapCollisionQueryAdapter::raycast` rewritten from
   the 8-line placeholder (`return RaycastHit2D{};`) into a
   ~110-line Amanatides-Woo 2D DDA walker. New includes:
-  `<cmath>`, `<limits>`, `"AYTileMath.h"` (for `worldToCell` /
+  `<cmath>`, `<limits>`, `"AY2D/TileMath.h"` (for `worldToCell` /
   `cellToWorld` / `isCellInWorldBounds`). Pure CPU geometry.
-- `include/AYTilemapCollisionAdapter.h` — `raycast` docblock
+- `include/AY2D/TilemapCollisionAdapter.h` — `raycast` docblock
   updated (~30 lines) with walker spec + L-3D-1..6 inline refs.
   **No signature change** (`virtual RaycastHit2D raycast(Ray2D,
   float maxDistance) const noexcept` unchanged); no new
@@ -4509,10 +4509,10 @@ CHECK):
 
 **Edge cases / traps documented** (would have been bugs):
 
-- `cellToWorld` returns cell CENTER per R-3E.5 (`AYTileMath.h:
+- `cellToWorld` returns cell CENTER per R-3E.5 (`AY2D/TileMath.h:
   18-19`). The walker derives EDGES by `center +/- 0.5 *
   tileSize * sign`; this is the half-cell trap noted in
-  `AYTilemap.h:203-208`. The first iteration of the D3 test
+  `AY2D/Tilemap.h:203-208`. The first iteration of the D3 test
   matrix computed test origins as `cell.center + tileSize/2`
   (which is the next cell's bottom-left corner, not the
   current cell's center); the walker correctly reported
@@ -4565,7 +4565,7 @@ remaining AY2D integration work is **all cross-module**:
 | CM | Target module | Owner | AY2D PR author role | Status |
 |---|---|---|---|---|
 | **CM-1** | AYRenderer | AYRenderer maintainer | Submit cross-module PR, do not self-merge | deferred; needs `RenderPassSlot::Forward2DOpaque` + `DrawItem::payload` append |
-| **CM-2** | AYResource | AYResource maintainer | Submit cross-module PR, do not self-merge | deferred; needs `IAYTilemap.h` + `.aytilemap` binary Loader/Converter + populate `blockedTileIds` |
+| **CM-2** | AYResource | AYResource maintainer | Submit cross-module PR, do not self-merge | deferred; needs `AYResource/assetsDefs/ITilemap.h` + `.aytilemap` binary Loader/Converter + populate `blockedTileIds` |
 | **CM-3** | AYEntity | AYEntity maintainer | Submit cross-module PR, do not self-merge | deferred; needs `AYTileMapComponent` / `AYSpriteComponent` ECS + `register2DSystem<T>(priority)` helper |
 | **CM-4** | AYShader | AYShader maintainer | Submit cross-module PR, do not self-merge | deferred; needs `tilemap.phoskia` + `tilemap_9tap.phoskia` variant tags |
 | **CM-5** | AYPhysics | AYPhysics maintainer | Submit cross-module PR, do not self-merge | **next up** — needs `ITileCollisionQuery` consumer (broadphase / character controller / normal-based correction) on the AYPhysics 2D resolver chain (Box2D backend per `AYPhysics/design.md` R2.5 ship, Jolt-2D "unverified" per §8.3) |

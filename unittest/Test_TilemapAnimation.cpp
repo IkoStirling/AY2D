@@ -11,9 +11,9 @@
 //     tiles independent / getAnimatedTileId returns live frame.
 
 #include "AYTest.h"
-#include "AYTileAnimation.h"
-#include "AYTileCoord.h"
-#include "AYTilemap.h"
+#include "AY2D/TileAnimation.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/Tilemap.h"
 
 using namespace ayt::ay2d;
 

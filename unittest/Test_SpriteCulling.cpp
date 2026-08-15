@@ -13,11 +13,11 @@
 // sequence (so the test does not silently diverge from the
 // production path's sort order).
 
-#include "AYSprite.h"
-#include "AYSpriteCulling.h"
+#include "AY2D/Sprite.h"
+#include "AY2D/SpriteCulling.h"
 
 #include "AYTest.h"
-#include "AYWorldAabb.h"
+#include "AY2D/WorldAabb.h"
 
 using namespace ayt::ay2d;
 

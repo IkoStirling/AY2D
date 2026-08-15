@@ -14,7 +14,7 @@
 
 #include <cstdint>
 
-#include "AYWorld2D.h"
+#include "AY2D/World2D.h"
 #include "AYTest.h"
 
 using namespace ayt::ay2d;

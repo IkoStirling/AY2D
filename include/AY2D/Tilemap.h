@@ -1,8 +1,8 @@
 #pragma once
-// AYTilemap.h — 2D grid container.
+// AY2D/Tilemap.h — 2D grid container.
 //
 // design.md §3 + §6: Tilemap holds a finite (cols x rows) tile-id
-// array per the chosen TileIdPackMode (declared in AYTileCoord.h), a
+// array per the chosen TileIdPackMode (declared in AY2D/TileCoord.h), a
 // per-tile slot for CollisionFlags (per design.md §8.1), and a
 // `loadState` for the ECS inspector (design.md F-18).
 //
@@ -23,19 +23,19 @@
 
 #include "AYMath/MathTypes.h"
 
-#include "AY2DCounters.h"
-#include "AYAtlasDesc.h"
-#include "AYTileAnimation.h"
-#include "AYTileCollision.h"  // Phase 5: CollisionFlags used by flagsAtRaw body
-#include "AYTileCoord.h"
-#include "AYTileLoadState.h"
-#include "AYTileMath.h"
-#include "AYTileRect.h"
+#include "AY2D/2DCounters.h"
+#include "AY2D/AtlasDesc.h"
+#include "AY2D/TileAnimation.h"
+#include "AY2D/TileCollision.h"  // Phase 5: CollisionFlags used by flagsAtRaw body
+#include "AY2D/TileCoord.h"
+#include "AY2D/TileLoadState.h"
+#include "AY2D/TileMath.h"
+#include "AY2D/TileRect.h"
 
 namespace ayt::ay2d {
 
-// Forward-declared in AYChunkRequestHandle.h; included via AYTileCoord.h
-// transitively (TileCoord.h doesn't depend on it), so we include here
+// Forward-declared in AY2D/ChunkRequestHandle.h; included via AY2D/TileCoord.h
+// transitively (AY2D/TileCoord.h doesn't depend on it), so we include here
 // directly.
 class ITilemapChunkSource;
 

@@ -16,7 +16,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "AYOrthographicCamera.h"
+#include "AY2D/OrthographicCamera.h"
 #include "AYTest.h"
 
 using namespace ayt::ay2d;

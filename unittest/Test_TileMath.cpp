@@ -13,10 +13,10 @@
 //
 // No cross-module dependency; all helpers are pure math.
 
-#include "AYTileMath.h"
+#include "AY2D/TileMath.h"
 
 #include "AYTest.h"
-#include "AYTilemap.h"
+#include "AY2D/Tilemap.h"
 
 using namespace ayt::ay2d;
 

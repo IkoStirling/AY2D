@@ -32,30 +32,30 @@
 #include <windowsx.h>  // GET_X_LPARAM / GET_Y_LPARAM
 
 #include "AYEntity.h"
-#include "AYEntityModule.h"
+#include "AYEntity/EntityModule.h"
 #include "AYGameLoop.h"
-#include "AYRendererSubSystem.h"
-#include "AYTilemapShaderSources.h"
-#include "AYWorld.h"
+#include "AYRenderer/RendererSubSystem.h"
+#include "AYRenderer/TilemapShaderSources.h"
+#include "AYEntity/World.h"
 
-#include "components/AYOrthoCameraComponent.h"
-#include "components/AYSpriteComponent.h"
-#include "components/AYTilemapComponent.h"
-#include "components/AYTransformComponent.h"
+#include "AYEntity/components/OrthoCameraComponent.h"
+#include "AYEntity/components/SpriteComponent.h"
+#include "AYEntity/components/TilemapComponent.h"
+#include "AYEntity/components/TransformComponent.h"
 
-#include "AYAtlasDesc.h"
-#include "AYOrthographicCamera.h"
-#include "AYSprite.h"
-#include "AYSpriteCulling.h"
-#include "AYSpriteDrawCmd.h"
-#include "AYTileMath.h"
-#include "AYTileSamplerUV.h"
-#include "AYWorld2D.h"
+#include "AY2D/AtlasDesc.h"
+#include "AY2D/OrthographicCamera.h"
+#include "AY2D/Sprite.h"
+#include "AY2D/SpriteCulling.h"
+#include "AY2D/SpriteDrawCmd.h"
+#include "AY2D/TileMath.h"
+#include "AY2D/TileSamplerUV.h"
+#include "AY2D/World2D.h"
 
-#include <assetsDefs/IAYTilemap.h>
-#include <AYResourceManager.h>
-#include "assetsImpl/AYTilemapAsset.h"
-#include "assetsImpl/AYTexture.h"
+#include <AYResource/assetsDefs/ITilemap.h>
+#include <AYResource/ResourceManager.h>
+#include "AYResource/assetsImpl/TilemapAsset.h"
+#include "AYResource/assetsImpl/Texture.h"
 
 #include "AYIO/File.h"
 #include <AYMath/MathTransform.h>
@@ -99,7 +99,7 @@ constexpr float kViewSize   = 540.0f;  // vertical world extent at zoom 1
 constexpr int kSpriteCount = 12;
 
 // Dense-atlas palette, one color per tile id (0..15). Atlas row 0 =
-// bottom row (origin-bottom-left convention, AYTileSamplerUV.h).
+// bottom row (origin-bottom-left convention, AY2D/TileSamplerUV.h).
 constexpr uint8_t kPalette[16][3] = {
     { 95,  95, 105},  //  0 floor (gray)
     { 55, 115,  55},  //  1 grass border
@@ -167,7 +167,7 @@ bool ensureAssetDirectory(const std::string& path)
 #endif
 }
 
-// Float3x3 (row-major affine, AYSpriteDrawCmd.h) -> Float4x4 (DrawItem
+// Float3x3 (row-major affine, AY2D/SpriteDrawCmd.h) -> Float4x4 (DrawItem
 // world). Rows 0..2 copy through, row 3 = (0,0,0,1).
 ayt::math::Float4x4 to4x4(const ayt::math::Float3x3& m)
 {
@@ -314,7 +314,7 @@ bool bakeTilemap(const std::string& path)
     ayt::resource::TilemapAsset asset;
     // UInt16 = ayt::math::UInt16 via the global using alias
     // (AYMath/MathDefs.h:64-65) — the same alias AYResource's own
-    // TilemapAsset.h uses internally.
+    // AYResource/assetsImpl/TilemapAsset.h uses internally.
     asset.create(kMapCols, kMapRows,
                  static_cast<UInt16>(kTilePx),
                  static_cast<UInt16>(kTilePx),

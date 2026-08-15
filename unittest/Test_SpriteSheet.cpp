@@ -6,11 +6,11 @@
 //
 // All assertions are pure CPU, no bgfx, no cross-module deps.
 
-#include "AYSpriteSheet.h"
+#include "AY2D/SpriteSheet.h"
 
-#include "AYAtlasDesc.h"
+#include "AY2D/AtlasDesc.h"
 #include "AYTest.h"
-#include "AYTileSamplerUV.h"
+#include "AY2D/TileSamplerUV.h"
 
 using namespace ayt::ay2d;
 

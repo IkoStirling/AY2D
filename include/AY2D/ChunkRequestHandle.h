@@ -1,5 +1,5 @@
 #pragma once
-// AYChunkRequestHandle.h — opaque async token for ITilemapChunkSource
+// AY2D/ChunkRequestHandle.h — opaque async token for ITilemapChunkSource
 // requests. Phase 3 promotes the underlying representation to a
 // packed 24-bit index + 8-bit generation, giving basic ABA safety
 // without bumping the design (the on-the-wire shape is still a

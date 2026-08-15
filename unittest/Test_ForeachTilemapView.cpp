@@ -10,8 +10,8 @@
 //
 // All assertions are pure CPU, no bgfx, no cross-module deps.
 
-#include "AYWorld2D.h"
-#include "AYWorld2DSnapshot.h"
+#include "AY2D/World2D.h"
+#include "AY2D/World2DSnapshot.h"
 
 #include "AYTest.h"
 

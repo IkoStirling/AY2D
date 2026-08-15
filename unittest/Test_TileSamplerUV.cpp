@@ -8,8 +8,8 @@
 #include <cmath>
 #include <cstdint>
 
-#include "AYAtlasDesc.h"
-#include "AYTileSamplerUV.h"
+#include "AY2D/AtlasDesc.h"
+#include "AY2D/TileSamplerUV.h"
 
 #include "AYTest.h"
 

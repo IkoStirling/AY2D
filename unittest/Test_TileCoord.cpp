@@ -9,7 +9,7 @@
 // that the stand-alone TU pattern (one Test_*.cpp per file, AYAudio
 // sibling convention) works under the AY2D / AYTest setup.
 
-#include "AYWorld2D.h"
+#include "AY2D/World2D.h"
 #include "AYTest.h"
 
 using namespace ayt::ay2d;

@@ -11,11 +11,11 @@
 // All assertions use real counters().snapshot() deltas — same
 // discipline as Phase 3C Test_CountersWired.cpp.
 
-#include "AYTilemap.h"
+#include "AY2D/Tilemap.h"
 
 #include "AYTest.h"
-#include "AYTileCoord.h"
-#include "AYTileRect.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/TileRect.h"
 
 using namespace ayt::ay2d;
 

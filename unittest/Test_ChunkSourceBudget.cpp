@@ -13,15 +13,15 @@
 // All assertions use real `counters().snapshot()` deltas —
 // same discipline as Phase 3C Test_CountersWired.
 
-#include "AYInMemoryTilemapChunkSource.h"
+#include "AY2D/InMemoryTilemapChunkSource.h"
 
 #include <chrono>
 
-#include "AY2DCounters.h"
-#include "AYChunkData.h"
-#include "AYChunkRequestHandle.h"
+#include "AY2D/2DCounters.h"
+#include "AY2D/ChunkData.h"
+#include "AY2D/ChunkRequestHandle.h"
 #include "AYTest.h"
-#include "AYTilemapChunkSource.h"
+#include "AY2D/TilemapChunkSource.h"
 
 using namespace ayt::ay2d;
 

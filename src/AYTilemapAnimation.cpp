@@ -10,7 +10,7 @@
 // branches before the loop. The slow path (real animation with
 // looping) walks the table once per call.
 
-#include "AYTilemap.h"
+#include "AY2D/Tilemap.h"
 
 namespace ayt::ay2d {
 

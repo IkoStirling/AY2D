@@ -1,5 +1,5 @@
 #pragma once
-// AYTileMath.h — Phase 3E world↔cell coordinate math layer.
+// AY2D/TileMath.h — Phase 3E world↔cell coordinate math layer.
 //
 // design.md §16: pure-math helpers that translate between world
 // (float) and cell (integer) coordinates. The layer is **pure
@@ -23,8 +23,8 @@
 
 #include "AYMath/MathTypes.h"
 
-#include "AYTileCoord.h"
-#include "AYTileRect.h"
+#include "AY2D/TileCoord.h"
+#include "AY2D/TileRect.h"
 
 namespace ayt::ay2d {
 

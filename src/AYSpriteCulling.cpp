@@ -16,10 +16,10 @@
 //   * `std::stable_sort` (R-3F.6 / F-2): two sprites at the
 //     same `packedSortKey` keep their input order.
 
-#include "AYOrthographicCamera.h"
-#include "AYSprite.h"
-#include "AYSpriteDrawCmd.h"
-#include "AYWorldAabb.h"
+#include "AY2D/OrthographicCamera.h"
+#include "AY2D/Sprite.h"
+#include "AY2D/SpriteDrawCmd.h"
+#include "AY2D/WorldAabb.h"
 
 #include <algorithm>
 #include <cstdint>

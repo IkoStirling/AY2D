@@ -13,7 +13,7 @@
 
 #include <cstdint>
 
-#include "AYTileCollision.h"
+#include "AY2D/TileCollision.h"
 #include "AYTest.h"
 
 using ayt::ay2d::CollisionFlags;
