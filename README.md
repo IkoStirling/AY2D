@@ -1,9 +1,29 @@
 # AY2D
 
-**Status:** Phase 0 — docs-only (no code merged yet). See [`design.md`](design.md) for the authoritative architecture.
+AY2D 是 AY Engine 的 2D 世界与呈现模块，提供 Tilemap、Sprite、正交相机、图集、瓦片动画、碰撞查询和分块流送能力。
 
-**Lane:** Present (Presentation) 2D subsystem of AY Engine — `TileFilter::Bilinear` is the default tile sampler; `RenderPassSlot::Forward2DOpaque` is the planned pipeline slot.
+## 公开接口
 
-**Out of scope:** UI widgets (capability-map §E L85), Jolt/Box2D 2D physics backend (TBD per `AYPhysics/design.md §4.2`), lockstep tile sim (gated on DET-01), any `bgfx::*` in public headers (see `design.md` §11.2).
+```cpp
+#include <AY2D.h>
+#include <AY2D/Sprite.h>
+#include <AY2D/Tilemap.h>
+#include <AY2D/OrthographicCamera.h>
+```
 
-**Authoritative document:** [`design.md`](design.md) (v0.1, 2026-07-27, including industrial-grade audit patches F-1..F-19).
+入口头文件 `AY2D.h` 位于模块根目录；公开实现头位于 `include/AY2D/`。
+
+## 依赖
+
+- AYMath
+- AYLog
+- AYTest（仅测试）
+
+## 构建
+
+```powershell
+cmake --build <build-dir> --target AY2D
+ctest --test-dir <build-dir> -R AY2D
+```
+
+完整架构和阶段状态见 [design.md](design.md)。
