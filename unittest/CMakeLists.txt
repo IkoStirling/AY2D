@@ -196,5 +196,4 @@ else()
     target_compile_options(${TEST_TARGET} PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-ay_configure_test_tmpdir(${TEST_TARGET})
-add_test(NAME ${TEST_TARGET} COMMAND ${TEST_TARGET})
+ay_add_test(${TEST_TARGET})
